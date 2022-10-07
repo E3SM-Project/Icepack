@@ -97,7 +97,7 @@
                              aicen,       trcrn,       & 
                              vicen,       vsnon,       & 
                              aice,        aice0,       & 
-                             fpond                     )
+                             fpond,       Tf           )
 
       integer (kind=int_kind), intent(in) :: &
          ncat    , & ! number of thickness categories
@@ -118,6 +118,9 @@
 
       integer (kind=int_kind), dimension (:,:), intent(in) :: &
          nt_strata      ! indices of underlying tracer layers
+
+      real (kind=dbl_kind), intent(in) :: &
+         Tf             ! freezing temperature
 
       real (kind=dbl_kind), dimension(:), intent(in) :: &
          aicen_init, & ! initial ice concentration (before vertical thermo)
@@ -587,7 +590,7 @@
                          aicen,    trcrn,       &
                          vicen,    vsnon,       &
                          hicen,    donor,       &
-                         daice,    dvice        )
+                         daice,    dvice, Tf    )
          if (icepack_warnings_aborted(subname)) return
 
          ! maintain qsno negative definiteness
@@ -2166,7 +2169,7 @@
                              vsnon,                 &
                              aice      ,         &
                              aice0     ,         &
-                             fpond       )
+                             fpond, Tf       )
             if (icepack_warnings_aborted(subname)) return
 
          endif ! aice > puny
@@ -2272,7 +2275,7 @@
                         fpond,                fresh,            &
                         fsalt,                fhocn,            &
                         faero_ocn,            l_fiso_ocn,       &
-                        fzsal,                flux_bio)   
+                        fzsal,                flux_bio, Tf)   
       if (icepack_warnings_aborted(subname)) return
 
       if (present(fiso_ocn)) then

@@ -162,7 +162,7 @@
       use icepack_intfc, only: icepack_aggregate
       use icedrv_domain_size, only: nilyr, nslyr, ncat
       use icedrv_domain_size, only: max_ntrcr, nx
-      use icedrv_flux, only: swvdr, swvdf, swidr, swidf
+      use icedrv_flux, only: swvdr, swvdf, swidr, swidf, Tf
       use icedrv_flux, only: sst, frzmlt, scale_factor
       use icedrv_forcing, only: oceanmixed_ice
       use icedrv_init, only: tmask
@@ -302,7 +302,8 @@
                                  trcr_depend=trcr_depend, &
                                  trcr_base=trcr_base,     &
                                  n_trcr_strata=n_trcr_strata, &
-                                 nt_strata=nt_strata)
+                                 nt_strata=nt_strata, &
+                                 Tf = Tf(i))
 
          aice_init(i) = aice(i)
       enddo

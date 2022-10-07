@@ -159,6 +159,7 @@
       character(len=char_len), public :: &
          tfrz_option  = 'mushy'   ! form of ocean freezing temperature
                                   ! 'minus1p8' = -1.8 C
+                                  ! 'constant' = Tocnfrz from namelist
                                   ! 'linear_salt' = -depressT * sss
                                   ! 'mushy' conforms with ktherm=2
 
@@ -554,6 +555,7 @@
         character(len=*), intent(in), optional :: &
              tfrz_option_in              ! form of ocean freezing temperature
                                          ! 'minus1p8' = -1.8 C
+                                         ! 'constant' = Tocnfrz from namelist
                                          ! 'linear_salt' = -depressT * sss
                                          ! 'mushy' conforms with ktherm=2
 
@@ -1234,6 +1236,7 @@
       character(len=*), intent(out), optional :: &
          tfrz_option_out              ! form of ocean freezing temperature
                                       ! 'minus1p8' = -1.8 C
+                                      ! 'constant' = Tocnfrz from namelist
                                       ! 'linear_salt' = -depressT * sss
                                       ! 'mushy' conforms with ktherm=2
 
