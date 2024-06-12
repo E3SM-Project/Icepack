@@ -600,6 +600,129 @@
       if (present(tau_ret_in)) tau_ret(:) = tau_ret_in(:)
       if (present(tau_rel_in)) tau_rel(:) = tau_rel_in(:)
 
+      R_Si2N(1) = ratio_Si2N_diatoms
+      R_Si2N(2) = ratio_Si2N_sp
+      R_Si2N(3) = ratio_Si2N_phaeo
+
+      R_S2N(1) = ratio_S2N_diatoms
+      R_S2N(2) = ratio_S2N_sp
+      R_S2N(3) = ratio_S2N_phaeo
+
+      R_Fe2C(1) = ratio_Fe2C_diatoms
+      R_Fe2C(2) = ratio_Fe2C_sp
+      R_Fe2C(3) = ratio_Fe2C_phaeo
+
+      R_Fe2N(1) = ratio_Fe2N_diatoms
+      R_Fe2N(2) = ratio_Fe2N_sp
+      R_Fe2N(3) = ratio_Fe2N_phaeo
+
+      R_C2N(1) = ratio_C2N_diatoms
+      R_C2N(2) = ratio_C2N_sp
+      R_C2N(3) = ratio_C2N_phaeo
+
+      R_chl2N(1) = ratio_chl2N_diatoms
+      R_chl2N(2) = ratio_chl2N_sp
+      R_chl2N(3) = ratio_chl2N_phaeo
+
+      F_abs_chl(1) = F_abs_chl_diatoms
+      F_abs_chl(2) = F_abs_chl_sp
+      F_abs_chl(3) = F_abs_chl_phaeo
+
+      R_Fe2DON(1) = ratio_Fe2DON
+      R_C2N_DON(1) = ratio_C2N_proteins
+
+      R_Fe2DOC(1) = ratio_Fe2DOC_s
+      R_Fe2DOC(2) = ratio_Fe2DOC_l
+      R_Fe2DOC(3) = c0
+
+      chlabs(1) = chlabs_diatoms 
+      chlabs(2) = chlabs_sp
+      chlabs(3) = chlabs_phaeo
+
+      alpha2max_low(1) = alpha2max_low_diatoms
+      alpha2max_low(2) = alpha2max_low_sp
+      alpha2max_low(3) = alpha2max_low_phaeo
+
+      beta2max(1) = beta2max_diatoms
+      beta2max(2) = beta2max_sp
+      beta2max(3) = beta2max_phaeo
+
+      mu_max(1) = mu_max_diatoms
+      mu_max(2) = mu_max_sp
+      mu_max(3) = mu_max_phaeo
+
+      grow_Tdep(1) = grow_Tdep_diatoms
+      grow_Tdep(2) = grow_Tdep_sp
+      grow_Tdep(3) = grow_Tdep_phaeo
+
+      fr_graze(1) = fr_graze_diatoms
+      fr_graze(2) = fr_graze_sp
+      fr_graze(3) = fr_graze_phaeo
+
+      mort_pre(1) = mort_pre_diatoms 
+      mort_pre(2) = mort_pre_sp
+      mort_pre(3) = mort_pre_phaeo
+
+      mort_Tdep(1) = mort_Tdep_diatoms
+      mort_Tdep(2) = mort_Tdep_sp
+      mort_Tdep(3) = mort_Tdep_phaeo
+
+      k_exude(1) = k_exude_diatoms
+      k_exude(2) = k_exude_sp
+      k_exude(3) = k_exude_phaeo
+
+      K_Nit(1) = K_Nit_diatoms
+      K_Nit(2) = K_Nit_sp
+      K_Nit(3) = K_Nit_phaeo
+
+      K_Am(1) = K_Am_diatoms
+      K_Am(2) = K_Am_sp
+      K_Am(3) = K_Am_phaeo
+
+      K_Sil(1) = K_Sil_diatoms
+      K_Sil(2) = K_Sil_sp
+      K_Sil(3) = K_Sil_phaeo
+
+      K_Fe(1) = K_Fe_diatoms
+      K_Fe(2) = K_Fe_sp
+      K_Fe(3) = K_Fe_phaeo
+
+      f_doc(:) = c0
+      f_doc(1) = f_doc_s
+      f_doc(2) = f_doc_l
+
+      f_don(1) = f_don_protein
+      kn_bac(1) = kn_bac_protein
+      f_don_Am(1) = f_don_Am_protein
+
+      f_exude(:) = c0
+      f_exude(1) = f_exude_s
+      f_exude(2) = f_exude_l
+
+      k_bac(:) = c0
+      k_bac(1) = k_bac_s
+      k_bac(2) = k_bac_l
+
+      algaltype(1) = algaltype_diatoms
+      algaltype(2) = algaltype_sp
+      algaltype(3) = algaltype_phaeo
+
+      doctype(:) = c0
+      doctype(1) = doctype_s
+      doctype(2) = doctype_l
+
+      dictype(:) = dictype_1
+      dontype(:) = dontype_protein
+      fedtype(:) = fedtype_1
+      feptype(:) = feptype_1
+
+      zaerotype(1) = zaerotype_bc1
+      zaerotype(2) = zaerotype_bc2
+      zaerotype(3) = zaerotype_dust1
+      zaerotype(4) = zaerotype_dust2
+      zaerotype(5) = zaerotype_dust3
+      zaerotype(6) = zaerotype_dust4
+
       end subroutine icepack_init_zbgc
 
 !=======================================================================
