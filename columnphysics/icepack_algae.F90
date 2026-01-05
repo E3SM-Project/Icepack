@@ -1012,7 +1012,7 @@
             bphin_N(1) = bphi_min
 
             if (abs(trcrn(bio_index(m) + k-1)) < accuracy) then
-               flux_bio_tmp(m) = trcrn(bio_index(m) + k-1)* hbri_old * dz(k)/dt
+               flux_bio_tmp(m) = MAX(c0,trcrn(bio_index(m) + k-1))* hbri_old * dz(k)/dt
                trcrn(bio_index(m) + k-1) = c0
                in_init_cons(k,m) = c0
             else
@@ -1361,7 +1361,7 @@
                 !call icepack_warnings_add(warnstr)
                 !write(warnstr,*) subname, flux_bio(m), hbri, hbri_old
                 !call icepack_warnings_add(warnstr)
-                flux_bio(m) = flux_bio(m) + bio_tmp*dz(k)*hbri/dt
+                flux_bio(m) = flux_bio(m) + MAX(c0,bio_tmp)*dz(k)*hbri/dt
                 bio_tmp = c0
                 !write(warnstr,*) subname, 'flux_bio(m) Final:'
                 !call icepack_warnings_add(warnstr)
