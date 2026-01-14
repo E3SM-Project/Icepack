@@ -129,6 +129,8 @@
       use icedrv_flux, only: dsnow, dsnown, faero_atm, faero_ocn
       use icedrv_flux, only: fiso_atm, fiso_ocn, fiso_evap
       use icedrv_flux, only: HDO_ocn, H2_16O_ocn, H2_18O_ocn
+      use icedrv_flux, only: dpnd_flushn, dpnd_exponn, dpnd_freebdn, dpnd_initialn, dpnd_dlidn
+      use icedrv_flux, only: dpnd_flush, dpnd_expon, dpnd_freebd, dpnd_initial, dpnd_dlid
       use icedrv_init, only: lmask_n, lmask_s
       use icedrv_state, only: aice, aicen, aice_init, aicen_init, vicen_init
       use icedrv_state, only: vice, vicen, vsno, vsnon, trcrn, uvel, vvel, vsnon_init
@@ -373,7 +375,12 @@
             afsdn         = trcrn       (i,nt_fsd:nt_fsd+nfsd-1,:), &
             lmask_n  = lmask_n(i),    lmask_s   = lmask_s(i),     &
             mlt_onset=mlt_onset(i),   frz_onset = frz_onset(i),   &
-            yday = yday,  prescribed_ice = prescribed_ice)
+            yday = yday,  prescribed_ice = prescribed_ice,        &
+            dpnd_flush  = dpnd_flush(i),   dpnd_flushn  = dpnd_flushn(i,:),   &
+            dpnd_expon  = dpnd_expon(i),   dpnd_exponn  = dpnd_exponn(i,:),   &
+            dpnd_freebd = dpnd_freebd(i),  dpnd_freebdn = dpnd_freebdn(i,:),  &
+            dpnd_initial= dpnd_initial(i), dpnd_initialn= dpnd_initialn(i,:), &
+            dpnd_dlid   = dpnd_dlid(i),    dpnd_dlidn   = dpnd_dlidn(i,:))
 
         if (tr_aero) then
           do n = 1, ncat
@@ -439,6 +446,7 @@
       use icedrv_flux, only: fsalt, Tf, sss, salinz, fhocn, rsiden, wlat
       use icedrv_flux, only: meltl, frazil_diag, flux_bio, faero_ocn, fiso_ocn
       use icedrv_flux, only: HDO_ocn, H2_16O_ocn, H2_18O_ocn
+      use icedrv_flux, only: dpnd_melt
       use icedrv_init, only: tmask
       use icedrv_state, only: aice, aicen, aice0, trcr_depend
       use icedrv_state, only: aicen_init, vicen_init, trcrn, vicen, vsnon
@@ -462,7 +470,7 @@
          tr_fsd  ! floe size distribution tracers
       
       character (len=char_len) :: &
-         wave_height_type
+         wave_height_type ! type of significant wave height forcing
 
       character(len=*), parameter :: subname='(step_therm2)'
 
@@ -482,12 +490,11 @@
       do i = 1, nx
 
          if (tmask(i)) then
-            ! wave_sig_ht - compute here to pass to add new ice
-            if (tr_fsd .and. trim(wave_height_type) == 'internal') then 
-                wave_sig_ht(i) = c4*SQRT(SUM(wave_spectrum(i,:)*dwavefreq(:)))
-            !else
-            !   wave_sig_ht(i) provided by coupler or external data. 
-            endif 
+            ! significant wave height
+            if (tr_fsd .and. trim(wave_height_type) == 'internal') then
+               wave_sig_ht(i) = c4*SQRT(SUM(wave_spectrum(i,:)*dwavefreq(:)))
+            ! else wave_sig_ht = 0 unless provided by coupler or other external data
+            endif
 
             call icepack_step_therm2(dt=dt,                           &
                          hin_max=hin_max(:),                          &
@@ -525,11 +532,11 @@
                          wave_sig_ht=wave_sig_ht(i),                  &
                          wave_spectrum=wave_spectrum(i,:),            &
                          wavefreq=wavefreq(:),                        &
-                         dwavefreq=dwavefreq(:),                      &
                          d_afsd_latg=d_afsd_latg(i,:),                &
                          d_afsd_newi=d_afsd_newi(i,:),                &
                          d_afsd_latm=d_afsd_latm(i,:),                &
-                         d_afsd_weld=d_afsd_weld(i,:))
+                         d_afsd_weld=d_afsd_weld(i,:),                &
+                         dpnd_melt=dpnd_melt(i))
 
          endif ! tmask
 
@@ -674,21 +681,11 @@
          ntrcr,           & !
          nbtrcr             !
 
-      character (len=char_len) :: &
-              wave_spec_type ,    &
-              wave_height_type
-
       character(len=*), parameter :: subname = '(step_dyn_wave)'
-
-      call icepack_query_parameters(wave_spec_type_out=wave_spec_type, wave_height_type_out=wave_height_type)
-      call icepack_warnings_flush(nu_diag)
-      if (icepack_warnings_aborted()) call icedrv_system_abort(string=subname, &
-             file=__FILE__,line= __LINE__)
 
       do i = 1, nx
            d_afsd_wave(i,:) = c0
-           call icepack_step_wavefracture (wave_spec_type=wave_spec_type, &
-                        wave_height_type=wave_height_type,     &
+           call icepack_step_wavefracture (                    &
                         dt=dt, nfreq=nfreq,                    &
                         aice          = aice         (i),      &
                         vice          = vice         (i),      &
@@ -697,7 +694,8 @@
                         wavefreq      = wavefreq     (:),      &
                         dwavefreq     = dwavefreq    (:),      &
                         trcrn         = trcrn        (i,:,:),  &
-                        d_afsd_wave   = d_afsd_wave  (i,:))
+                        d_afsd_wave   = d_afsd_wave  (i,:),    &
+                        wave_height   = wave_sig_ht  (i))
       end do ! i
 
       call icepack_warnings_flush(nu_diag)
@@ -825,6 +823,7 @@
       use icedrv_flux, only: dvirdgdt, opening, closing, fpond, fresh, fhocn
       use icedrv_flux, only: aparticn, krdgn, aredistn, vredistn, dardg1ndt, dardg2ndt
       use icedrv_flux, only: dvirdgndt, araftn, vraftn, fsalt, flux_bio, faero_ocn, fiso_ocn
+      use icedrv_flux, only: dpnd_ridge
       use icedrv_init, only: tmask
       use icedrv_state, only: trcrn, vsnon, aicen, vicen
       use icedrv_state, only: aice, aice0, trcr_depend, n_trcr_strata
@@ -895,7 +894,8 @@
                          aice=aice(i),             fsalt=fsalt(i),           &
                          first_ice=first_ice(i,:),                           &
                          flux_bio=flux_bio(i,1:nbtrcr),                      &
-                         closing=closing(i),       Tf=Tf(i) )
+                         closing=closing(i),       Tf=Tf(i),                 &
+                         dpnd_ridge=dpnd_ridge(i))
 
          endif ! tmask
 
@@ -934,7 +934,8 @@
                          araftn=araftn(i,:),       vraftn=vraftn(i,:),       &
                          aice=aice(i),             fsalt=fsalt(i),           &
                          first_ice=first_ice(i,:),                           &
-                         flux_bio=flux_bio(i,1:nbtrcr), Tf = Tf(i))
+                         flux_bio=flux_bio(i,1:nbtrcr), Tf = Tf(i),          &
+                         dpnd_ridge=dpnd_ridge(i))
 
          endif ! tmask
 
