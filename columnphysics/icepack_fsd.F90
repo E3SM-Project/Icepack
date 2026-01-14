@@ -826,9 +826,6 @@
       real(kind=dbl_kind), intent(in) :: &
          wave_height     ! significant wave height (m)
 
-      real(kind=dbl_kind), intent(in), optional :: &
-         wave_height ! significant wave height (m)
-
       integer (kind=int_kind), intent(out) :: &
          new_size        ! index of floe size category in which new floes will grow
 
