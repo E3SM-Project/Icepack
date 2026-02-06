@@ -10,7 +10,7 @@
 
       use icepack_kinds
 
-      use icepack_parameters, only: p05, p5, c0, c1, c2, c6, c10, p1
+      use icepack_parameters, only: p05, p5, c0, c1, c2, c6, c10, p1, p01
       use icepack_parameters, only: pi, secday, puny
       use icepack_parameters, only: hs_ssl, sk_l
 
@@ -1011,7 +1011,7 @@
             iphin_N(k) = iphin(k)
             bphin_N(1) = bphi_min
 
-            if (abs(trcrn(bio_index(m) + k-1)) < accuracy) then
+            if (abs(trcrn(bio_index(m) + k-1)) < accuracy*p01) then
                flux_bio_tmp(m) = MAX(c0,trcrn(bio_index(m) + k-1))* hbri_old * dz(k)/dt
                trcrn(bio_index(m) + k-1) = c0
                in_init_cons(k,m) = c0
@@ -1361,7 +1361,7 @@
                 !call icepack_warnings_add(warnstr)
                 !write(warnstr,*) subname, flux_bio(m), hbri, hbri_old
                 !call icepack_warnings_add(warnstr)
-                flux_bio(m) = flux_bio(m) + MAX(c0,bio_tmp)*dz(k)*hbri/dt
+                flux_bio(m) = flux_bio(m) + bio_tmp*dz(k)*hbri/dt
                 bio_tmp = c0
                 !write(warnstr,*) subname, 'flux_bio(m) Final:'
                 !call icepack_warnings_add(warnstr)
@@ -1393,9 +1393,9 @@
                 call icepack_warnings_add(warnstr)
                 call icepack_warnings_add(subname//' C in algal_dyn not conserved')
                 !call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
-            elseif (abs(bio_tmp) < accuracy) then
-               flux_bio(m) = flux_bio(m) + bio_tmp*dz(k)*hbri/dt
-               bio_tmp = c0
+            elseif (abs(bio_tmp) < accuracy*p01) then
+                flux_bio(m) = flux_bio(m) + MAX(c0,bio_tmp)*dz(k)*hbri/dt
+                bio_tmp = c0
             elseif (bio_tmp > large_bgc) then
                 write(warnstr,*) subname, 'very large bgc value'
                 call icepack_warnings_add(warnstr)

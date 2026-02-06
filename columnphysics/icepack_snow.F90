@@ -868,7 +868,8 @@
       !-----------------------------------------------------------------
             do k = 1,nslyr
                call snow_wet_metamorph (dt, drsnw_wet(k), rsnw(k,n), &
-                                        smice(k,n), smliq(k,n))
+                    smice(k,n), smliq(k,n))
+               rsnw (k,n) = max(rsnw_fall, rsnw(k,n))
                if (icepack_warnings_aborted(subname)) return
                drsnw_dry_tmp = max(drsnw_dry(k), drsnw_min*drsnw_min_o/rsnw(k,n)**2*dt)
                rsnw(k,n) = min(rsnw_tmax, rsnw(k,n) + drsnw_dry_tmp + drsnw_wet(k))
