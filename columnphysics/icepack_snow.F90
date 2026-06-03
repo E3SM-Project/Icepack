@@ -30,9 +30,11 @@
       public :: icepack_step_snow, drain_snow, icepack_init_snow
 
       real (kind=dbl_kind), parameter, public :: &
-         S_r  = 0.033_dbl_kind, & ! irreducible saturation (Anderson 1976)
-         S_wet= 4.22e5_dbl_kind  ! wet metamorphism parameter (um^3/s)
-                                  ! = 1.e18 * 4.22e-13 (Oleson 2010)
+         S_r  = 0.1_dbl_kind, &  !Brun 1989
+                                 !0.033_dbl_kind, & ! irreducible saturation (Anderson 1976)
+         S_wet= 4.22e5_dbl_kind, & ! wet metamorphism parameter (um^3/s)
+                                   ! = 1.e18 * 4.22e-13 (Oleson 2010)
+         S_dry_o = 1.0186_dbl_kind ! Bun 1989  (um^3/s)  minimum volume growth rate 1.28x10^-8 mm^3/s/4/pi
 
       real (kind=dbl_kind) :: &
          min_rhos, &   ! snowtable axis data, assumes linear data
@@ -251,7 +253,8 @@
                                    smice,     smliq,     &
                                    rsnw,      rhos_cmpn, &
                                    fresh,     fhocn,     &
-                                   fsloss,    fsnow)
+                                   fsloss,    fsnow,     &
+                                   vslvln,    ITD)
 
       integer (kind=int_kind), intent(in) :: &
          nslyr, & ! number of snow layers
@@ -279,7 +282,11 @@
          fsloss       ! rate of snow loss to leads (kg/m^2/s)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
-         vsnon    ! snow volume (m)
+         vsnon    , & ! snow volume (m)
+         vslvln       ! level snow volume (m) diagnostic
+
+      real (kind=dbl_kind), intent(inout) :: &
+         ITD          ! standard deviation of the thickness distribution (m)
 
       real (kind=dbl_kind), dimension(:,:), intent(inout) :: &
          zqsn     , & ! snow enthalpy (J/m^3)
@@ -324,6 +331,7 @@
       vsno = c0
       do n = 1, ncat
          vsno = vsno + vsnon(n)
+         vslvln(n) = vsnon(n) * alvl(n)
       enddo
       tmp1 = rhos*vsno + fresh*dt
 
@@ -336,7 +344,8 @@
                           alvl(:),  vlvl(:),   &
                           fresh,    fhocn,     &
                           fsloss,   rhos_cmpn, &
-                          fsnow)
+                          fsnow,    vslvln(:), &
+                          ITD)
          if (icepack_warnings_aborted(subname)) return
       endif
 
@@ -398,7 +407,7 @@
 ! thickness does not
 
       subroutine snow_redist(dt, nslyr, ncat, wind, ain, vin, vsn, zqsn, &
-         alvl, vlvl, fresh, fhocn, fsloss, rhos_cmpn, fsnow)
+         alvl, vlvl, fresh, fhocn, fsloss, rhos_cmpn, fsnow, vslvln, ITD)
 
       integer (kind=int_kind), intent(in) :: &
          nslyr     , & ! number of snow layers
@@ -421,11 +430,15 @@
          fsloss        ! rate of snow loss to leads (kg/m^2/s)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
-         vsn           ! snow volume (m)
+         vsn       , & ! snow volume (m)
+         vslvln        ! level snow volume diagnostic tracer
 
       real (kind=dbl_kind), dimension(:,:), intent(inout) :: &
          zqsn      , & ! snow enthalpy (J/m^3)
          rhos_cmpn     ! effective snow density: compaction (kg/m^3)
+
+      real (kind=dbl_kind), intent(inout) :: &
+         ITD           ! Standard deviation of the thickness distribution (m)
 
       ! local variables
 
@@ -455,6 +468,7 @@
          asnw_lvl  , & ! mass of snow redeposited on level ice (kg/m^2)
          e_redeptmp, & ! redeposited energy (J/m^2)
          dhsn      , & ! change in snow depth (m)
+         dhsnl     , & ! change in level snow depth (m)
          dmp       , & ! mass difference in previous layer (kg/m^2)
          hslyr     , & ! snow layer thickness (m)
          hslab     , & ! new snow thickness (m)
@@ -467,7 +481,7 @@
          tmp1, tmp2, & ! temporary values
          tmp3, tmp4, & ! temporary values
          tmp5      , & ! temporary values
-         work          ! temporary value
+         work, worka   ! temporary value
 
       real (kind=dbl_kind), dimension(ncat) :: &
          sfac      , & ! temporary for snwlvlfac
@@ -482,7 +496,8 @@
          atmp      , & ! temporary variable for ain, for debugging convenience
          hin       , & ! ice thickness (m)
          hsn       , & ! snow depth (m)
-         hsn_new       ! new snow depth (m)
+         hsn_new   , & ! new snow depth (m)
+         hlvln
 
       real (kind=dbl_kind), dimension (nslyr) :: &
          dzs             ! snow layer thickness after redistribution (m)
@@ -563,7 +578,8 @@
 !         enddo
       endif
       ITDsd = sqrt(work)
-
+      !save as diagnostic
+      ITD = ITDsd
       !-----------------------------------------------------------------
       ! fraction of suspended snow lost in leads
       !-----------------------------------------------------------------
@@ -623,10 +639,13 @@
       !-----------------------------------------------------------------
 
       do n = 1, ncat
+         hlvln(n) = hsn_new(n)
          if (trim(snwredist) == 'ITDrdg') then  ! use level and ridged ice
             work = atmp(n)*(c1-flost)*(ardg(n)*(c1+sfac(n)) + asnw_lvl)
+            worka = atmp(n)*(c1-flost)*asnw_lvl
          else                                   ! use standard ITD
             work = atmp(n)*(c1-flost)
+            worka = atmp(n)*(c1-flost)*alvl(n)
          endif
          m_redep(n) = msnw_susp*work    ! mass
          e_redep(n) = c0
@@ -634,7 +653,12 @@
 
          ! change in snow depth
          dhsn = c0
+         dhsnl = c0
          if (atmp(n) > puny) then
+            if (alvl(n) > puny) then
+               dhsnl = msnw_susp*worka/(rhos * atmp(n) * alvl(n))
+               vslvln(n) = (hlvln(n) + dhsnl)*(atmp(n)*alvl(n))
+            endif
             dhsn = m_redep(n) / (rhos*atmp(n))
 
             if (abs(dhsn) > c0) then
@@ -859,6 +883,9 @@
          drsnw_wet, & ! wet metamorphism (10^-6 m)
          drsnw_dry    ! dry (temperature gradient) metamorphism (10^-6 m)
 
+      real (kind=dbl_kind) :: &
+         drsnw_dry_tmp ! snow grain radius growth  (10^-6 m)
+
       character (len=*),parameter :: subname='(update_snow_radius)'
 
       do n = 1, ncat
@@ -883,7 +910,9 @@
                call snow_wet_metamorph (dt, drsnw_wet(k), rsnw(k,n), &
                                         smice(k,n), smliq(k,n))
                if (icepack_warnings_aborted(subname)) return
-               rsnw(k,n) = min(rsnw_tmax, rsnw(k,n) + drsnw_dry(k) + drsnw_wet(k))
+               drsnw_dry_tmp = max(drsnw_dry(k), S_dry_o/rsnw(k,n)**2*dt)
+               rsnw(k,n) = min(rsnw_tmax, rsnw(k,n) + drsnw_dry_tmp + drsnw_wet(k))
+               !rsnw(k,n) = min(rsnw_tmax, rsnw(k,n) + drsnw_dry(k) + drsnw_wet(k))
             enddo
 
          else ! hsn or hin < puny
