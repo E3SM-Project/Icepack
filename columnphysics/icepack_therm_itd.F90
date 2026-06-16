@@ -29,7 +29,7 @@
       use icepack_parameters, only: phi_init, dsin0_frazil
       use icepack_parameters, only: Tliquidus_max
       use icepack_parameters, only: rhosi, conserv_check, rhosmin, snwredist
-      use icepack_parameters, only: kitd, ktherm
+      use icepack_parameters, only: kitd, ktherm, min_salin
       use icepack_parameters, only: z_tracers, hfrazilmin, hi_min
       use icepack_parameters, only: cpl_frazil, update_ocn_f, saltflux_option
       use icepack_parameters, only: icepack_chkoptargflag
@@ -1470,7 +1470,7 @@
          if (cpl_frazil == 'omega-fluxes') then
             vi0new = frazilm * dt / rhoi
             if (vi0new > puny) then
-               Si0new = c1000 * frazils / frazilm
+               Si0new = max(c1000 * frazils / frazilm, min_salin)
                qi0new = -frazilh / frazilm * rhoi
             else
                Si0new = sss
