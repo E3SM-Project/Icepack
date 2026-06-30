@@ -23,13 +23,13 @@
 
       use icepack_fsd, only: floe_rad_c, floe_binwidth
 
-      use icepack_parameters, only: c0, c1, c2, c3, c4, c6, c10
+      use icepack_parameters, only: c0, c1, c2, c3, c4, c6, c10, c1000
       use icepack_parameters, only: p001, p1, p333, p5, p666, puny, bignum
       use icepack_parameters, only: rhos, rhoi, Lfresh, ice_ref_salinity
       use icepack_parameters, only: phi_init, dsin0_frazil
       use icepack_parameters, only: Tliquidus_max
       use icepack_parameters, only: rhosi, conserv_check, rhosmin, snwredist
-      use icepack_parameters, only: kitd, ktherm
+      use icepack_parameters, only: kitd, ktherm, min_salin
       use icepack_parameters, only: z_tracers, hfrazilmin, hi_min
       use icepack_parameters, only: cpl_frazil, update_ocn_f, saltflux_option
       use icepack_parameters, only: icepack_chkoptargflag
@@ -1238,7 +1238,10 @@
                               wave_spectrum,         &
                               wavefreq,              &
                               d_afsd_latg,           &
-                              d_afsd_newi)
+                              d_afsd_newi,           &
+                              frazilm,               &
+                              frazils,               &
+                              frazilh)
 
       use icepack_fsd, only: fsd_lateral_growth, fsd_add_new_ice
 
@@ -1315,6 +1318,13 @@
                             ! change in thickness distribution (area)
          d_afsd_latg    , & ! due to fsd lateral growth
          d_afsd_newi        ! new ice formation
+
+      ! explicit frazil fluxes
+      
+      real (kind=dbl_kind), intent(in), optional :: &
+         frazilm        , & ! frazil ice mass flux (kg/m2/s)
+         frazils        , & ! frazil ice salt flux (kg/m2/s)
+         frazilh            ! frazil ice enthalpy flux (+) (W/m2)
 
       ! local variables
 
@@ -1457,16 +1467,28 @@
       !-----------------------------------------------------------------
 
       if (ktherm == 2) then  ! mushy
-         if (sss > c2 * dSin0_frazil) then
-            Si0new = sss - dSin0_frazil
+         if (cpl_frazil == 'omega-fluxes') then
+            vi0new = frazilm * dt / rhoi
+            if (vi0new > puny) then
+               Si0new = max(c1000 * frazils / frazilm, min_salin)
+               qi0new = -frazilh / frazilm * rhoi
+            else
+               Si0new = sss
+               qi0new = c0
+               vi0new = c0
+            endif
          else
-            Si0new = sss**2 / (c4*dSin0_frazil)
+            if (sss > c2 * dSin0_frazil) then
+               Si0new = sss - dSin0_frazil
+            else
+               Si0new = sss**2 / (c4*dSin0_frazil)
+            endif
+            Ti = min(liquidus_temperature_mush(Si0new/phi_init), Tliquidus_max)
+            qi0new = icepack_enthalpy_mush(Ti, Si0new)
          endif
          do k = 1, nilyr
             Sprofile(k) = Si0new
          enddo
-         Ti = min(liquidus_temperature_mush(Si0new/phi_init), Tliquidus_max)
-         qi0new = icepack_enthalpy_mush(Ti, Si0new)
       else
          do k = 1, nilyr
             Sprofile(k) = salinz(k)
@@ -1479,7 +1501,7 @@
       !-----------------------------------------------------------------
 
       fnew = max (frzmlt, c0)    ! fnew > 0 iff frzmlt > 0
-      vi0new = -fnew*dt / qi0new ! note sign convention, qi < 0
+      if (cpl_frazil .NE. 'omega-fluxes') vi0new = -fnew*dt / qi0new ! note sign convention, qi < 0
       vi0_init = vi0new          ! for bgc
 
       ! increment ice volume and energy
@@ -1504,7 +1526,7 @@
 
       dfresh = c0
       dfsalt = c0
-      if (cpl_frazil == 'external') then
+      if (cpl_frazil == 'external' .OR. cpl_frazil == 'omega-fluxes') then
          ! do nothing here, calculations are in the coupler or elsewhere
       else
          if (update_ocn_f) then
@@ -1894,7 +1916,8 @@
                                      wavefreq,                    &
                                      d_afsd_latg,  d_afsd_newi,   &
                                      d_afsd_latm,  d_afsd_weld,   &
-                                     dpnd_melt)
+                                     dpnd_melt,    frazilm,       &
+                                     frazils,      frazilh)
 
       use icepack_parameters, only: icepack_init_parameters
 
@@ -1940,6 +1963,11 @@
 
       real (kind=dbl_kind), intent(inout), optional :: &
          dpnd_melt    ! pond 'drainage' due to ice melting (m / step)
+
+      real (kind=dbl_kind), intent(in), optional :: &
+         frazilm  , & ! frazil ice mass flux (kg/m^2/s)
+         frazils  , & ! frazil ice salt flux (kg/m^2/s)
+         frazilh      ! frazil ice enthalpy flux (+) (W/m^2)
 
       real (kind=dbl_kind), intent(in), optional :: &
          wlat         ! lateral melt rate (m/s)
@@ -2031,6 +2059,16 @@
                 return
              endif
           endif
+          if (cpl_frazil == 'omega-fluxes') then
+             if (.not.(present(frazilm)   .and. &
+                       present(frazils)    .and. &
+                       present(frazilh))) then
+                
+                call icepack_warnings_add(subname//' error in frazil arguments, cpl_frazil=omega-fluxes')
+                call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+                return
+             endif
+          endif
       endif
 
       !-----------------------------------------------------------------
@@ -2110,7 +2148,9 @@
                            H2_18O_ocn,                  &
                            wave_sig_ht,                 &
                            wave_spectrum, wavefreq,     &
-                           d_afsd_latg,   d_afsd_newi)
+                           d_afsd_latg,   d_afsd_newi,  &
+                           frazilm,       frazils,      &
+                           frazilh)
 
          if (icepack_warnings_aborted(subname)) return
 
