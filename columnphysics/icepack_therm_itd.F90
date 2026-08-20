@@ -1894,7 +1894,7 @@
                                      wavefreq,                    &
                                      d_afsd_latg,  d_afsd_newi,   &
                                      d_afsd_latm,  d_afsd_weld,   &
-                                     dpnd_melt)
+                                     dpnd_melt,    dSin0_frazil_cell)
 
       use icepack_parameters, only: icepack_init_parameters
 
@@ -1942,7 +1942,8 @@
          dpnd_melt    ! pond 'drainage' due to ice melting (m / step)
 
       real (kind=dbl_kind), intent(in), optional :: &
-         wlat         ! lateral melt rate (m/s)
+         wlat,        & ! lateral melt rate (m/s)
+         dSin0_frazil_cell ! frazil bulk salinity reduction from sss (ppt)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
          aicen_init,& ! initial concentration of ice
@@ -1999,6 +2000,9 @@
 
       character(len=*),parameter :: subname='(icepack_step_therm2)'
 
+      real (kind=dbl_kind) :: &
+         dSin0_frazil_local
+
       !-----------------------------------------------------------------
       ! Check optional arguments and set local values
       !-----------------------------------------------------------------
@@ -2032,6 +2036,9 @@
              endif
           endif
       endif
+
+      dSin0_frazil_local = dSin0_frazil
+      if (present(dSin0_frazil_cell)) dSin0_frazil_local = dSin0_frazil_cell
 
       !-----------------------------------------------------------------
       ! Let rain drain through to the ocean.
@@ -2102,7 +2109,7 @@
                            fresh,         fsalt,        &
                            Tf,            sss,          &
                            salinz,        phi_init,     &
-                           dSin0_frazil,                &
+                           dSin0_frazil_local,          &
                            flux_bio,                    &
                            ocean_bio,                   &
                            frazil_diag,   fiso_ocn,     &
