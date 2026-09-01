@@ -1320,7 +1320,7 @@
          d_afsd_newi        ! new ice formation
 
       ! explicit frazil fluxes
-      
+
       real (kind=dbl_kind), intent(in), optional :: &
          frazilm        , & ! frazil ice mass flux (kg/m2/s)
          frazils        , & ! frazil ice salt flux (kg/m2/s)
@@ -1969,7 +1969,7 @@
          wlat       , & ! lateral melt rate (m/s)
          frazilm    , & ! frazil ice mass flux (kg/m^2/s)
          frazils    , & ! frazil ice salt flux (kg/m^2/s)
-         frazilh        ! frazil ice enthalpy flux (+) (W/m^2)
+         frazilh    , & ! frazil ice enthalpy flux (+) (W/m^2)
          dSin0_frazil_cell ! frazil bulk salinity reduction from sss (ppt)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
@@ -2066,7 +2066,7 @@
              if (.not.(present(frazilm)   .and. &
                        present(frazils)    .and. &
                        present(frazilh))) then
-                
+
                 call icepack_warnings_add(subname//' error in frazil arguments, cpl_frazil=omega-fluxes')
                 call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
                 return
