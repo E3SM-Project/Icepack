@@ -294,13 +294,18 @@
       logical (kind=log_kind), public :: &
          calc_strair     = .true.  , & ! if true, calculate wind stress
          formdrag        = .false. , & ! if true, calculate form drag
-         highfreq        = .false.     ! if true, calculate high frequency coupling
+         highfreq        = .false. , & ! if true, calculate high frequency coupling
+         use_ice_atm_flux_reg = .false. ! if true, use regularized atmosphere-ice flux iteration
 
       integer (kind=int_kind), public :: &
          natmiter        = 5 ! number of iterations for atm boundary layer calcs
 
       ! Flux convergence tolerance
       real (kind=dbl_kind), public :: atmiter_conv = c0
+
+      real (kind=dbl_kind), public :: &
+         ice_atm_flux_eps     = 0.5_dbl_kind, & ! transition width for regularized stability functions
+         ice_atm_flux_damping = 0.08_dbl_kind   ! fixed-point damping for regularized flux iteration
 
 !-----------------------------------------------------------------------
 ! Parameters for the ice thickness distribution
@@ -590,7 +595,8 @@
          ahmax_in, R_ice_in, R_pnd_in, R_snw_in, dT_mlt_in, rsnw_mlt_in, &
          kalg_in, R_gC2molC_in, kstrength_in, krdg_partic_in, krdg_redist_in, mu_rdg_in, &
          atmbndy_in, calc_strair_in, formdrag_in, highfreq_in, natmiter_in, &
-         atmiter_conv_in, calc_dragio_in, &
+         atmiter_conv_in, use_ice_atm_flux_reg_in, ice_atm_flux_eps_in, &
+         ice_atm_flux_damping_in, calc_dragio_in, &
          tfrz_option_in, kitd_in, kcatbound_in, hs0_in, frzpnd_in, &
          apnd_sl_in, saltflux_option_in, congel_freeze_in, &
          floeshape_in, wave_spec_in, wave_spec_type_in, wave_height_type_in, nfreq_in, &
@@ -850,13 +856,17 @@
       logical (kind=log_kind), intent(in), optional :: &
          calc_strair_in,     & ! if true, calculate wind stress components
          formdrag_in,        & ! if true, calculate form drag
-         highfreq_in           ! if true, use high frequency coupling
+         highfreq_in,         & ! if true, use high frequency coupling
+         use_ice_atm_flux_reg_in ! if true, use regularized atmosphere-ice flux iteration
 
       integer (kind=int_kind), intent(in), optional :: &
          natmiter_in        ! number of iterations for boundary layer calculations
 
-      ! Flux convergence tolerance
-      real (kind=dbl_kind), intent(in), optional :: atmiter_conv_in
+      ! Flux convergence tolerance and regularization parameters
+      real (kind=dbl_kind), intent(in), optional :: &
+         atmiter_conv_in,        & ! convergence tolerance for atmosphere boundary layer iteration
+         ice_atm_flux_eps_in,    & ! regularization half-width for stability functions
+         ice_atm_flux_damping_in   ! damping factor for regularized flux iteration
 
 !-----------------------------------------------------------------------
 ! Parameters for the ice thickness distribution
@@ -1229,6 +1239,9 @@
       if (present(highfreq_in)          ) highfreq         = highfreq_in
       if (present(natmiter_in)          ) natmiter         = natmiter_in
       if (present(atmiter_conv_in)      ) atmiter_conv     = atmiter_conv_in
+      if (present(use_ice_atm_flux_reg_in)) use_ice_atm_flux_reg = use_ice_atm_flux_reg_in
+      if (present(ice_atm_flux_eps_in)  ) ice_atm_flux_eps = ice_atm_flux_eps_in
+      if (present(ice_atm_flux_damping_in)) ice_atm_flux_damping = ice_atm_flux_damping_in
       if (present(congel_freeze_in)     ) congel_freeze    = congel_freeze_in
       if (present(tfrz_option_in)       ) tfrz_option      = tfrz_option_in
       if (present(saltflux_option_in)   ) saltflux_option  = saltflux_option_in
@@ -1604,7 +1617,8 @@
          rsnw_mlt_out, dEdd_algae_out, &
          kalg_out, R_gC2molC_out, kstrength_out, krdg_partic_out, krdg_redist_out, mu_rdg_out, &
          atmbndy_out, calc_strair_out, formdrag_out, highfreq_out, natmiter_out, &
-         atmiter_conv_out, calc_dragio_out, &
+         atmiter_conv_out, use_ice_atm_flux_reg_out, ice_atm_flux_eps_out, &
+         ice_atm_flux_damping_out, calc_dragio_out, &
          tfrz_option_out, kitd_out, kcatbound_out, hs0_out, frzpnd_out, &
          apnd_sl_out, saltflux_option_out, congel_freeze_out, &
          floeshape_out, wave_spec_out, wave_spec_type_out, wave_height_type_out, nfreq_out, &
@@ -1874,13 +1888,17 @@
       logical (kind=log_kind), intent(out), optional :: &
          calc_strair_out,     & ! if true, calculate wind stress components
          formdrag_out,        & ! if true, calculate form drag
-         highfreq_out           ! if true, use high frequency coupling
+         highfreq_out,         & ! if true, use high frequency coupling
+         use_ice_atm_flux_reg_out ! if true, use regularized atmosphere-ice flux iteration
 
       integer (kind=int_kind), intent(out), optional :: &
          natmiter_out        ! number of iterations for boundary layer calculations
 
-      ! Flux convergence tolerance
-      real (kind=dbl_kind), intent(out), optional :: atmiter_conv_out
+      ! Flux convergence tolerance and regularization parameters
+      real (kind=dbl_kind), intent(out), optional :: &
+         atmiter_conv_out,        & ! convergence tolerance for atmosphere boundary layer iteration
+         ice_atm_flux_eps_out,    & ! regularization width for stability functions
+         ice_atm_flux_damping_out   ! damping factor for regularized flux iteration
 
 !-----------------------------------------------------------------------
 ! Parameters for the ice thickness distribution
@@ -2285,6 +2303,9 @@
       if (present(highfreq_out)          ) highfreq_out     = highfreq
       if (present(natmiter_out)          ) natmiter_out     = natmiter
       if (present(atmiter_conv_out)      ) atmiter_conv_out = atmiter_conv
+      if (present(use_ice_atm_flux_reg_out)) use_ice_atm_flux_reg_out = use_ice_atm_flux_reg
+      if (present(ice_atm_flux_eps_out)  ) ice_atm_flux_eps_out = ice_atm_flux_eps
+      if (present(ice_atm_flux_damping_out)) ice_atm_flux_damping_out = ice_atm_flux_damping
       if (present(congel_freeze_out)     ) congel_freeze_out = congel_freeze
       if (present(tfrz_option_out)       ) tfrz_option_out  = tfrz_option
       if (present(saltflux_option_out)   ) saltflux_option_out = saltflux_option
@@ -2599,6 +2620,9 @@
         write(iounit,*) "  highfreq   = ", highfreq
         write(iounit,*) "  natmiter   = ", natmiter
         write(iounit,*) "  atmiter_conv = ", atmiter_conv
+        write(iounit,*) "  use_ice_atm_flux_reg = ", use_ice_atm_flux_reg
+        write(iounit,*) "  ice_atm_flux_eps = ", ice_atm_flux_eps
+        write(iounit,*) "  ice_atm_flux_damping = ", ice_atm_flux_damping
         write(iounit,*) "  congel_freeze = ", trim(congel_freeze)
         write(iounit,*) "  tfrz_option= ", trim(tfrz_option)
         write(iounit,*) "  saltflux_option = ", trim(saltflux_option)
