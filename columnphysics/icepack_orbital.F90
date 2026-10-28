@@ -151,7 +151,7 @@
       use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
 
 #ifdef CESMCOUPLED
-      use shr_orb_mod, only: shr_orb_decl
+   use shr_orb_mod, only: shr_orb_decl, shr_orb_cosz
       use icepack_parameters, only: icepack_chkoptargflag
 #endif
 
@@ -245,9 +245,7 @@
          else
             call shr_orb_decl(ydayp1, eccen, mvelpp, lambm0, &
                               obliqr, decln, eccf)
-            coszen = sin(tlat)*sin(decln) &
-                   + cos(tlat)*cos(decln) &
-                   *cos((sec/secday-p5)*c2*pi + tlon) !cos(hour angle)
+            coszen = shr_orb_cosz(ydayp1, tlat, tlon, decln)
          end if
       endif
 #else
