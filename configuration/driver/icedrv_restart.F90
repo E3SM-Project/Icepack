@@ -400,8 +400,8 @@
       if (tr_FY)        call read_restart_FY()        ! first-year area tracer
       if (tr_lvl)       call read_restart_lvl()       ! level ice tracer
       if (tr_pond_lvl)  call read_restart_pond_lvl()  ! level-ice melt ponds
-      if (tr_pond_sealvl) call read_restart_pond_sealvl() ! sealvl ponds same as lvl
       if (tr_pond_topo) call read_restart_pond_topo() ! topographic melt ponds
+      if (tr_pond_sealvl) call read_restart_pond_sealvl() ! sealvl ponds same as lvl
       if (tr_snow)      call read_restart_snow()      ! snow metamorphosis tracers
       if (tr_iso)       call read_restart_iso()       ! ice isotopes
       if (tr_aero)      call read_restart_aero()      ! ice aerosols
@@ -981,7 +981,7 @@
       use icedrv_state, only: trcrn
       use icedrv_domain_size, only: ncat
       integer (kind=int_kind) :: nt_apnd, nt_hpnd, nt_ipnd
-      character(len=*), parameter :: subname='(write_restart_pond_lvl)'
+      character(len=*), parameter :: subname='(read_restart_pond_lvl)'
 
       call icepack_query_tracer_indices(nt_apnd_out=nt_apnd, nt_hpnd_out=nt_hpnd, &
            nt_ipnd_out=nt_ipnd)
@@ -1043,7 +1043,7 @@
       use icedrv_state, only: trcrn
       use icedrv_domain_size, only: ncat
       integer (kind=int_kind) :: nt_apnd, nt_hpnd, nt_ipnd
-      character(len=*), parameter :: subname='(write_restart_pond_sealvl)'
+      character(len=*), parameter :: subname='(read_restart_pond_sealvl)'
 
       call icepack_query_tracer_indices(nt_apnd_out=nt_apnd, nt_hpnd_out=nt_hpnd, &
            nt_ipnd_out=nt_ipnd)
