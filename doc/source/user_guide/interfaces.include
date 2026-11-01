@@ -771,9 +771,12 @@ The optional ``secday_in`` supplies the fixed day duration in seconds.
 Omitting it retains the default of 86400 seconds, the exact day-unit
 conversion given by `NIST SP 330 (2019), Section 4, Table 8
 <https://doi.org/10.6028/NIST.SP.330-2019>`_. This is not a sidereal day
-or the duration of a UTC day containing a leap second. Coupled callers
-may supply this value from their own constants dictionary; Icepack does
-not depend on that dictionary.
+and historical UTC days containing leap seconds differ from this duration.
+`CGPM Resolution 5 (2026) <https://doi.org/10.59161/CGPM2026RES5E>`_
+specifies that continuous UTC takes effect on 20 May 2027, ending future
+leap-second adjustments without changing the exact day-unit conversion
+or erasing historical leap seconds. Coupled callers may supply this value
+from their own constants dictionary; Icepack does not depend on that dictionary.
 
 .. code-block:: fortran
 

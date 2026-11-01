@@ -64,7 +64,9 @@
          spval_const= -1.0e36_dbl_kind
 
       ! Fixed day unit: NIST SP 330 (2019), Section 4, Table 8.
-      ! doi:10.6028/NIST.SP.330-2019; not a sidereal day or a UTC leap-second day.
+      ! doi:10.6028/NIST.SP.330-2019; not a sidereal day.
+      ! Historical UTC leap-second days differ; continuous UTC starts 20 May 2027.
+      ! CGPM Resolution 5 (2026), doi:10.59161/CGPM2026RES5E.
       real (kind=dbl_kind), public :: &
          secday = 86400.0_dbl_kind ,&! fixed day duration (s); optional secday_in override
          puny   = 1.0e-11_dbl_kind, &
