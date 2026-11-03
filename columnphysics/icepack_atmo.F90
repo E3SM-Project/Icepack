@@ -488,9 +488,9 @@
       qstar_next = c2 * qstar
 
       k = 1
-      do while ( sqrt(((ustar_next - ustar_prev)/(ustar_prev + 1.e-3_dbl_kind))**2 + &
-                      ((tstar_next - tstar_prev)/(tstar_prev + 1.e-5_dbl_kind))**2 + &
-                      ((qstar_next - qstar_prev)/(qstar_prev + 1.e-8_dbl_kind))**2) > atmiter_conv)
+      do while ( sqrt(((ustar_next - ustar_prev)/(abs(ustar_prev) + 1.e-3_dbl_kind))**2 + &
+                      ((tstar_next - tstar_prev)/(abs(tstar_prev) + 1.e-5_dbl_kind))**2 + &
+                      ((qstar_next - qstar_prev)/(abs(qstar_prev) + 1.e-8_dbl_kind))**2) > atmiter_conv)
          if (k > natmiter) then
             call icepack_warnings_add('atmo_boundary_layer: flux iteration did not converge')
             exit
