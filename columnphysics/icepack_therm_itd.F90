@@ -1470,6 +1470,12 @@
          if (cpl_frazil == 'omega-fluxes') then
             vi0new = frazilm * dt / rhoi
             if (vi0new > puny) then
+               Si0new = c1000 * frazils / frazilm
+               if (Si0new < min_salin) then
+                  write(warnstr,*) subname, 'omega-fluxes frazil salinity below min_salin (g/kg): ', &
+                                  Si0new, min_salin
+                  call icepack_warnings_add(warnstr)
+               endif
                Si0new = max(c1000 * frazils / frazilm, min_salin)
                qi0new = -frazilh / frazilm * rhoi
             else
