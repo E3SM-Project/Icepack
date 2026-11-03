@@ -63,8 +63,12 @@
          p666 = c2/c3, &
          spval_const= -1.0e36_dbl_kind
 
+      ! Fixed day unit: NIST SP 330 (2019), Section 4, Table 8.
+      ! doi:10.6028/NIST.SP.330-2019; not a sidereal day.
+      ! Historical UTC leap-second days differ; continuous UTC starts 20 May 2027.
+      ! CGPM Resolution 5 (2026), doi:10.59161/CGPM2026RES5E.
       real (kind=dbl_kind), public :: &
-         secday = 86400.0_dbl_kind ,&! seconds in calendar day
+         secday = 86400.0_dbl_kind ,&! fixed day duration (s); optional secday_in override
          puny   = 1.0e-11_dbl_kind, &
          bignum = 1.0e+30_dbl_kind, &
          pi     = 3.14159265358979323846_dbl_kind
@@ -642,7 +646,8 @@
          ratio_C2N_diatoms_in, ratio_C2N_sp_in, ratio_C2N_phaeo_in, &
          ratio_chl2N_diatoms_in, ratio_chl2N_sp_in, ratio_chl2N_phaeo_in, &
          F_abs_chl_diatoms_in, F_abs_chl_sp_in, F_abs_chl_phaeo_in, &
-         ratio_C2N_proteins_in )
+         ratio_C2N_proteins_in, &
+         Lfresh_in )
 
       !-----------------------------------------------------------------
       ! control settings
@@ -656,7 +661,7 @@
       !-----------------------------------------------------------------
 
       real (kind=dbl_kind), intent(in), optional :: &
-         secday_in,     & !
+         secday_in,     & ! fixed day duration (s); default 86400
          puny_in,       & !
          bignum_in,     & !
          pi_in            !
@@ -688,6 +693,7 @@
          Tffresh_in,    & ! freezing temp of fresh ice (K)
          Lsub_in,       & ! latent heat, sublimation freshwater (J/kg)
          Lvap_in,       & ! latent heat, vaporization freshwater (J/kg)
+         Lfresh_in,     & ! optional override; otherwise derived as Lsub - Lvap (J/kg)
          Timelt_in,     & ! melting temperature, ice top surface  (C)
          Tsmelt_in,     & ! melting temperature, snow top surface (C)
          ice_ref_salinity_in, & ! (ppt)
@@ -1566,6 +1572,8 @@
 
       call icepack_recompute_constants()
       if (icepack_warnings_aborted(subname)) return
+      ! Allow a caller to provide fusion heat independently of Lsub - Lvap.
+      if (present(Lfresh_in)) Lfresh = Lfresh_in
 
       end subroutine icepack_init_parameters
 
