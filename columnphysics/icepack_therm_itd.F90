@@ -1328,7 +1328,7 @@
          frazilh            ! frazil ice enthalpy flux (+) (W/m2)
 
       real (kind=dbl_kind), intent(inout), optional :: &
-         frazilSalt         ! total salt in frazil ice(kg/m2)
+         frazilSalt         ! total salt in new ice this step (kg/m2)
 
       ! local variables
 
@@ -1522,7 +1522,15 @@
 
       ! history diagnostics
       frazil = vi0new
-      if (present(frazilSalt)) frazilSalt = Si0new * vi0new * rhoi/c1000
+      ! salt in new ice: Si0new is only defined for mushy thermodynamics,
+      ! otherwise new ice is assumed to have the reference salinity
+      if (present(frazilSalt)) then
+         if (ktherm == 2) then
+            frazilSalt = Si0new * vi0new * rhoi/c1000
+         else
+            frazilSalt = ice_ref_salinity * vi0new * rhoi/c1000
+         endif
+      endif
 
       if (present(frz_onset) .and. present(yday)) then
          if (frazil > puny .and. frz_onset < puny) frz_onset = yday
@@ -1984,7 +1992,7 @@
          dSin0_frazil_cell ! frazil bulk salinity reduction from sss (ppt)
 
       real (kind=dbl_kind), intent(inout), optional :: &
-         frazilSalt     ! total salt in frazil ice (kg/m2/step)
+         frazilSalt     ! total salt in new ice this step (kg/m2)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
          aicen_init,& ! initial concentration of ice
@@ -2170,7 +2178,7 @@
                            wave_spectrum, wavefreq,     &
                            d_afsd_latg,   d_afsd_newi,  &
                            frazilm,       frazils,      &
-                           frazilh)
+                           frazilh,       frazilSalt)
 
          if (icepack_warnings_aborted(subname)) return
 
