@@ -308,14 +308,6 @@
 
          enddo                     ! end iteration
       else  ! the revised flux scheme
-         atmiter_conv = 3.e-3_dbl_kind ! manually set for testing
-
-         ! sanity check: regularization width must be positive
-         if (ice_atm_flux_eps <= 0.0_dbl_kind) then
-            call icepack_warnings_add('atmo_boundary_layer: ice_atm_flux_eps must be positive')
-            call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
-         endif
-
          ! first pass of the iteration without stability limiter
          !------------------------------------------------------------
          call flux_iteration_with_stability(.false., &

@@ -298,14 +298,14 @@
          use_ice_atm_flux_reg = .false. ! if true, use regularized atmosphere-ice flux iteration
 
       integer (kind=int_kind), public :: &
-         natmiter        = 5 ! number of iterations for atm boundary layer calcs
+         natmiter        = -1 ! choose iteration limit from use_ice_atm_flux_reg
 
-      ! Flux convergence tolerance
-      real (kind=dbl_kind), public :: atmiter_conv = c0
+      ! Choose flux convergence tolerance from use_ice_atm_flux_reg
+      real (kind=dbl_kind), public :: atmiter_conv = -1._dbl_kind
 
       real (kind=dbl_kind), public :: &
-         ice_atm_flux_eps     = 0.5_dbl_kind, & ! transition width for regularized stability functions
-         ice_atm_flux_damping = 0.08_dbl_kind   ! fixed-point damping for regularized flux iteration
+         ice_atm_flux_eps     = 0.1_dbl_kind, & ! transition width for regularized stability functions
+         ice_atm_flux_damping = 0.016_dbl_kind   ! fixed-point damping for regularized flux iteration
 
 !-----------------------------------------------------------------------
 ! Parameters for the ice thickness distribution
@@ -860,11 +860,11 @@
          use_ice_atm_flux_reg_in ! if true, use regularized atmosphere-ice flux iteration
 
       integer (kind=int_kind), intent(in), optional :: &
-         natmiter_in        ! number of iterations for boundary layer calculations
+         natmiter_in        ! iteration limit; -1 selects a default based on regularization
 
       ! Flux convergence tolerance and regularization parameters
       real (kind=dbl_kind), intent(in), optional :: &
-         atmiter_conv_in,        & ! convergence tolerance for atmosphere boundary layer iteration
+         atmiter_conv_in,        & ! convergence tolerance; -1 selects a default based on regularization
          ice_atm_flux_eps_in,    & ! regularization half-width for stability functions
          ice_atm_flux_damping_in   ! damping factor for regularized flux iteration
 
@@ -1242,6 +1242,32 @@
       if (present(use_ice_atm_flux_reg_in)) use_ice_atm_flux_reg = use_ice_atm_flux_reg_in
       if (present(ice_atm_flux_eps_in)  ) ice_atm_flux_eps = ice_atm_flux_eps_in
       if (present(ice_atm_flux_damping_in)) ice_atm_flux_damping = ice_atm_flux_damping_in
+      ! Resolve automatic settings using the current regularization flag.
+      if (use_ice_atm_flux_reg) then
+         if (natmiter == -1) natmiter = 20000000
+         if (atmiter_conv == -1._dbl_kind) atmiter_conv = 3.e-3_dbl_kind
+      else
+         if (natmiter == -1) natmiter = 5
+         if (atmiter_conv == -1._dbl_kind) atmiter_conv = c0
+      endif
+      if (natmiter <= 0) then
+         call icepack_warnings_add(subname//' natmiter must be positive')
+         call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+      endif
+      if (atmiter_conv < c0) then
+         call icepack_warnings_add(subname//' atmiter_conv must be nonnegative')
+         call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+      endif
+      if (use_ice_atm_flux_reg) then
+         if (ice_atm_flux_eps <= c0) then
+            call icepack_warnings_add(subname//' ice_atm_flux_eps must be positive')
+            call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+         endif
+         if (ice_atm_flux_damping <= c0 .or. ice_atm_flux_damping > c1) then
+            call icepack_warnings_add(subname//' ice_atm_flux_damping must be greater than 0 and at most 1')
+            call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+         endif
+      endif
       if (present(congel_freeze_in)     ) congel_freeze    = congel_freeze_in
       if (present(tfrz_option_in)       ) tfrz_option      = tfrz_option_in
       if (present(saltflux_option_in)   ) saltflux_option  = saltflux_option_in
