@@ -121,6 +121,11 @@
 
       ! local variables
 
+      real (kind=dbl_kind), parameter :: &
+         ustar_tiny = 1.e-3_dbl_kind, &
+         tstar_tiny = 1.e-5_dbl_kind, &
+         qstar_tiny = 1.e-8_dbl_kind
+
       integer (kind=int_kind) :: &
          k,n         ! iteration index
 
@@ -317,7 +322,7 @@
 
          ! next, check if computed scaling parameters are near zero. if so, this suggests that the
          ! system of equations has no solution and the stability limiter is necessary
-         if (abs(ustar) < 1.e-12_dbl_kind .or. abs(tstar) < 1.e-12_dbl_kind .or. abs(qstar) < 1.e-12_dbl_kind) then
+         if (abs(ustar) < ustar_tiny .or. abs(tstar) < tstar_tiny .or. abs(qstar) < qstar_tiny) then
             ! second pass of iteration with stability limiter
             !------------------------------------------------------------
             call flux_iteration_with_stability(.true., &
@@ -480,9 +485,9 @@
       qstar_next = c2 * qstar
 
       k = 1
-      do while ( sqrt(((ustar_next - ustar_prev)/(abs(ustar_prev) + 1.e-3_dbl_kind))**2 + &
-                      ((tstar_next - tstar_prev)/(abs(tstar_prev) + 1.e-5_dbl_kind))**2 + &
-                      ((qstar_next - qstar_prev)/(abs(qstar_prev) + 1.e-8_dbl_kind))**2) > atmiter_conv)
+      do while ( sqrt(((ustar_next - ustar_prev)/(abs(ustar_prev) + ustar_tiny))**2 + &
+                      ((tstar_next - tstar_prev)/(abs(tstar_prev) + tstar_tiny))**2 + &
+                      ((qstar_next - qstar_prev)/(abs(qstar_prev) + qstar_tiny))**2) > atmiter_conv)
          if (k > natmiter) then
             call icepack_warnings_add('atmo_boundary_layer: flux iteration did not converge')
             exit
