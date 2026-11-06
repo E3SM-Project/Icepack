@@ -101,7 +101,7 @@
          mu_rdg, hs0, dpscale, rfracmin, rfracmax, pndaspect, hs1, hp1, &
          apnd_sl, tscale_pnd_drain, itd_area_min, itd_mass_min, &
          a_rapid_mode, Rac_rapid_mode, aspect_rapid_mode, dSdt_slow_mode, &
-         phi_c_slow_mode, phi_i_mushy, kalg, emissivity, floediam, hfrazilmin, &
+         phi_c_slow_mode, phi_i_mushy, saltmax, kalg, emissivity, floediam, hfrazilmin, &
          rsnw_fall, rsnw_tmax, rhosnew, rhosmin, rhosmax, &
          windmin, drhosdwind, snwlvlfac, snw_growth_wet, drsnw_min, snwliq_max
 
@@ -124,6 +124,7 @@
 
       logical (kind=log_kind) :: calc_Tsfc, formdrag, highfreq, calc_strair, calc_dragio
       logical (kind=log_kind) :: conserv_check, semi_implicit_Tsfc, vapor_flux_correction
+      logical (kind=log_kind) :: mushy_zero_salinity
 
       integer (kind=int_kind) :: ntrcr
       logical (kind=log_kind) :: tr_iage, tr_FY, tr_lvl, tr_pond, tr_snow
@@ -157,7 +158,7 @@
         kcatbound
 
       namelist /thermo_nml/ &
-        kitd,           ktherm,          ksno,     conduct,             &
+         kitd,           ktherm,          mushy_zero_salinity, saltmax, ksno, conduct, &
         a_rapid_mode,   Rac_rapid_mode,  aspect_rapid_mode,             &
         dSdt_slow_mode, phi_c_slow_mode, phi_i_mushy,                   &
         floediam,       hfrazilmin,      Tliquidus_max,    hi_min,      &
@@ -239,6 +240,8 @@
            pndaspect_out=pndaspect, hs1_out=hs1, hp1_out=hp1, &
            apnd_sl_out=apnd_sl, tscale_pnd_drain_out=tscale_pnd_drain, &
            ktherm_out=ktherm, calc_Tsfc_out=calc_Tsfc, &
+           mushy_zero_salinity_out=mushy_zero_salinity, &
+           saltmax_out=saltmax, &
            semi_implicit_Tsfc_out=semi_implicit_Tsfc, &
            vapor_flux_correction_out=vapor_flux_correction, &
            floediam_out=floediam, hfrazilmin_out=hfrazilmin, &
@@ -628,6 +631,10 @@
          write (nu_diag,*) 'WARNING: ktherm = 2 and calc_Tsfc = F'
          write (nu_diag,*) 'WARNING: Setting calc_Tsfc = T'
          calc_Tsfc = .true.
+      endif
+
+      if (mushy_zero_salinity .and. ktherm /= 2) then
+         call icedrv_system_abort(string='mushy_zero_salinity requires ktherm=2')
       endif
 
       if (ktherm == 1 .and. trim(tfrz_option) /= 'linear_salt') then
@@ -1043,6 +1050,8 @@
            apnd_sl_in=apnd_sl, tscale_pnd_drain_in=tscale_pnd_drain, &
            floediam_in=floediam, hfrazilmin_in=hfrazilmin, &
            ktherm_in=ktherm, calc_Tsfc_in=calc_Tsfc, &
+           mushy_zero_salinity_in=mushy_zero_salinity, &
+           saltmax_in=saltmax, &
            semi_implicit_Tsfc_in=semi_implicit_Tsfc, &
            vapor_flux_correction_in=vapor_flux_correction, &
            conduct_in=conduct, a_rapid_mode_in=a_rapid_mode, &

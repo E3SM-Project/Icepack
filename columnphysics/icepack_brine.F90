@@ -9,7 +9,7 @@
       use icepack_kinds
       use icepack_parameters, only: p01, p001, p5, c0, c1, c2, c1p5, puny, p25
       use icepack_parameters, only: gravit, rhoi, rhow, rhos, depressT
-      use icepack_parameters, only: min_salin, rhosi
+      use icepack_parameters, only: min_salin, rhosi, mushy_zero_salinity
       use icepack_parameters, only: l_sk
       use icepack_tracers, only: nilyr, nblyr, ntrcr, nt_qice, nt_sice
       use icepack_tracers, only: nt_Tsfc
@@ -19,7 +19,7 @@
       use icepack_warnings, only: warnstr, icepack_warnings_add
       use icepack_warnings, only: icepack_warnings_setabort, icepack_warnings_aborted
 
-      use icepack_mushy_physics, only: icepack_mushy_temperature_mush, icepack_mushy_liquid_fraction
+      use icepack_mushy_physics, only: icepack_mushy_state
 
       implicit none
 
@@ -194,14 +194,16 @@
       real (kind=dbl_kind), dimension(nblyr+1) :: &
          drho            ! brine density difference (kg/m^3)
 
-      real(kind=dbl_kind), parameter :: &
-         Smin = p01
+      real(kind=dbl_kind) :: Smin
 
       character(len=*),parameter :: subname='(compute_microS_mushy)'
 
       !-----------------------------------------------------------------
       ! Define ice salinity and temperature on bgrid
       !-----------------------------------------------------------------
+
+      Smin = p01
+      if (mushy_zero_salinity) Smin = c0
 
       trtmp_s(:) = c0
       trtmp_q(:) = c0
@@ -214,6 +216,7 @@
 
       ! map Sin and qin (cice) profiles to bgc grid
       surface_S = min_salin
+      if (mushy_zero_salinity) surface_S = c0
       hinc_old  = hice_old
 
       call remap_zbgc(nilyr,          &
@@ -237,8 +240,7 @@
       do k = 1, nblyr
          bqin (k+1) = min(c0,   trtmp_q(nt_qice+k-1))
          bSin (k+1) = max(Smin, trtmp_s(nt_sice+k-1))
-         bTin (k+1) = icepack_mushy_temperature_mush(bqin(k+1), bSin(k+1))
-         bphin(k+1) = icepack_mushy_liquid_fraction (bTin(k+1), bSin(k+1))
+         call icepack_mushy_state(bqin(k+1), bSin(k+1), bTin(k+1), bphin(k+1))
       enddo    ! k
 
       bSin (1)       = bSin(2)
@@ -330,12 +332,17 @@
             igrm = igrid(k) - igrid(k-1)
          endif
 
-         brine_sal(k) = a1*bTin(k)    &
-                      + a2*bTin(k)**2 &
-                      + a3*bTin(k)**3
-         brine_rho(k) = b1 + b2*brine_sal(k)
-         bphin    (k) = max(puny, bSin(k)*rhosi &
-                      / (brine_sal(k)*brine_rho(k)))
+         if (mushy_zero_salinity .and. bSin(k) == c0) then
+            brine_sal(k) = c0
+            brine_rho(k) = b1
+         else
+            brine_sal(k) = a1*bTin(k)    &
+                         + a2*bTin(k)**2 &
+                         + a3*bTin(k)**3
+            brine_rho(k) = b1 + b2*brine_sal(k)
+            bphin    (k) = max(puny, bSin(k)*rhosi &
+                         / (brine_sal(k)*brine_rho(k)))
+         endif
          bphin    (k) = min(c1, bphin(k))
          kin      (k) = k_o*bphin(k)**exp_h
       enddo    ! k
@@ -374,8 +381,8 @@
          ibrine_rho(k) = (brine_rho(k+1)*igrp + brine_rho(k)*igrm) * rigr
          iTin      (k) = (bTin     (k+1)*igrp + bTin     (k)*igrm) * rigr
          iSin      (k) = (bSin     (k+1)*igrp + bSin     (k)*igrm) * rigr
-         iphin     (k) = max(puny, &
-                         (bphin    (k+1)*igrp + bphin    (k)*igrm) * rigr)
+         iphin     (k) = (bphin    (k+1)*igrp + bphin    (k)*igrm) * rigr
+         if (.not.mushy_zero_salinity) iphin(k) = max(puny, iphin(k))
          iphin     (k) = min(c1, iphin (k))
       enddo    ! k
 
