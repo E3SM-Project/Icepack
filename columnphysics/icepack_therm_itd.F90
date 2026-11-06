@@ -1522,10 +1522,18 @@
 
       ! history diagnostics
       frazil = vi0new
-      ! salt in new ice: Si0new is only defined for mushy thermodynamics,
-      ! otherwise new ice is assumed to have the reference salinity
+      ! Total salt in new ice this step (kg/m2), including lateral growth.
+      ! Use the new ice salinity Si0new (defined for mushy thermodynamics)
+      ! with omega-fluxes, where it is the salinity of the frazil supplied by
+      ! the ocean, or with prognostic salt fluxes; otherwise use the reference
+      ! salinity.
+      ! NOTE: with cpl_frazil = 'external' or 'omega-fluxes' none of this salt
+      ! is included in fsalt. With other cpl_frazil options the part -dfsalt*dt
+      ! computed below is also added to fsalt, so a host model salt budget
+      ! should not add both fsalt and frazilSalt in full.
       if (present(frazilSalt)) then
-         if (ktherm == 2) then
+         if ((cpl_frazil == 'omega-fluxes' .or. saltflux_option == 'prognostic') &
+             .and. ktherm == 2) then
             frazilSalt = Si0new * vi0new * rhoi/c1000
          else
             frazilSalt = ice_ref_salinity * vi0new * rhoi/c1000
