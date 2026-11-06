@@ -1483,6 +1483,20 @@ the ice layers, allowing a continuum approximation: a bulk sea-ice
 quantity is taken to be the liquid-fraction-weighted average of that
 quantity in the ice and in the brine.
 
+The experimental ``mushy_zero_salinity`` option (default ``.false.``)
+extends the local phase closure to ice layers with exactly zero bulk
+salinity. With the option enabled, zero-salinity ice is treated as pure
+water: it is solid below the freshwater melting point, may contain a
+liquid fraction at the melting point, and is fully liquid above it.
+Because temperature and salinity alone do not determine the liquid
+fraction on the freshwater melting plateau, the temperature-and-salinity
+liquid-fraction helper uses the pure-solid endpoint at exactly 0 C; the
+enthalpy-based state calculation resolves the plateau fraction.
+Positive-salinity layers continue to use the standard mushy formulation.
+This option is intended for development and sensitivity testing; it does
+not by itself validate freshwater hydraulic transport or the full-column
+mass and energy budgets.
+
 *Enthalpy and mushy physics* 
 
 The mush enthalpy, :math:`q`, is related

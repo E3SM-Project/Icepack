@@ -156,6 +156,7 @@
          semi_implicit_Tsfc = .false.    ,&! surface temperature coupling option
          vapor_flux_correction = .false. ,&! compute mass/enthalpy correction for evaporation/sublimation
          update_ocn_f = .false. ,&! include fresh water and salt fluxes for frazil
+         mushy_zero_salinity = .false.,&! enable zero-salinity mushy phase closure
          modal_aero   = .false. ,&! if true, use modal aerosal optical properties
                                   ! only for use with tr_aero or tr_zaero
          conserv_check = .false.  ! if true, do conservations checks and abort
@@ -581,7 +582,7 @@
          awtvdr_in, awtidr_in, awtvdf_in, awtidf_in, &
          qqqice_in, TTTice_in, qqqocn_in, TTTocn_in, &
          ktherm_in, conduct_in, fbot_xfer_type_in, calc_Tsfc_in, &
-         update_ocn_f_in, ustar_min_in, hi_min_in, a_rapid_mode_in, &
+         update_ocn_f_in, mushy_zero_salinity_in, ustar_min_in, hi_min_in, a_rapid_mode_in, &
          cpl_frazil_in, semi_implicit_Tsfc_in, vapor_flux_correction_in, &
          Rac_rapid_mode_in, aspect_rapid_mode_in, &
          dSdt_slow_mode_in, phi_c_slow_mode_in, &
@@ -719,7 +720,8 @@
          semi_implicit_Tsfc_in   , &! compute dfsurf/dT, dflat/dT terms instead of fsurf, flat
          vapor_flux_correction_in, &! compute mass/enthalpy correction when evaporation/sublimation
                             ! computed outside at 0C
-         update_ocn_f_in    ! include fresh water and salt fluxes for frazil
+         update_ocn_f_in,   &! include fresh water and salt fluxes for frazil
+         mushy_zero_salinity_in ! enable zero-salinity mushy phase closure
 
       real (kind=dbl_kind), intent(in), optional :: &
          hi_min_in,  &      ! minimum ice thickness allowed (m) for thermo
@@ -1197,6 +1199,7 @@
       if (present(vapor_flux_correction_in)) vapor_flux_correction= vapor_flux_correction_in
       if (present(cpl_frazil_in)        ) cpl_frazil       = cpl_frazil_in
       if (present(update_ocn_f_in)      ) update_ocn_f     = update_ocn_f_in
+      if (present(mushy_zero_salinity_in)) mushy_zero_salinity = mushy_zero_salinity_in
       if (present(ustar_min_in)         ) ustar_min        = ustar_min_in
       if (present(hi_min_in)            ) hi_min           = hi_min_in
       if (present(a_rapid_mode_in)      ) a_rapid_mode     = a_rapid_mode_in
@@ -1597,6 +1600,7 @@
          qqqice_out, TTTice_out, qqqocn_out, TTTocn_out, update_ocn_f_out, &
          Lfresh_out, cprho_out, Cp_out, ustar_min_out, hi_min_out, a_rapid_mode_out, &
          ktherm_out, conduct_out, fbot_xfer_type_out, calc_Tsfc_out, &
+         mushy_zero_salinity_out, &
          Rac_rapid_mode_out, aspect_rapid_mode_out, dSdt_slow_mode_out, &
          phi_c_slow_mode_out, phi_i_mushy_out, shortwave_out, semi_implicit_Tsfc_out, &
          albedo_type_out, albicev_out, albicei_out, albsnowv_out, vapor_flux_correction_out, &
@@ -1741,7 +1745,8 @@
          semi_implicit_Tsfc_out    ,&! compute dfsurf/dT, dflat/dT terms instead of fsurf, flat
          vapor_flux_correction_out ,&! compute mass/enthalpy correction when evaporation/sublimation
                             ! computed outside at 0C
-         update_ocn_f_out   ! include fresh water and salt fluxes for frazil
+         update_ocn_f_out,  &! include fresh water and salt fluxes for frazil
+         mushy_zero_salinity_out ! enable zero-salinity mushy phase closure
 
       real (kind=dbl_kind), intent(out), optional :: &
          hi_min_out,  &      ! minimum ice thickness allowed (m) for thermo
@@ -2246,6 +2251,7 @@
       if (present(TTTocn_out)            ) TTTocn_out       = TTTocn
       if (present(secday_out)            ) secday_out       = secday
       if (present(ktherm_out)            ) ktherm_out       = ktherm
+      if (present(mushy_zero_salinity_out)) mushy_zero_salinity_out = mushy_zero_salinity
       if (present(conduct_out)           ) conduct_out      = conduct
       if (present(fbot_xfer_type_out)    ) fbot_xfer_type_out = fbot_xfer_type
       if (present(calc_Tsfc_out)         ) calc_Tsfc_out    = calc_Tsfc
@@ -2560,6 +2566,7 @@
         write(iounit,*) "  cprho      = ",cprho
         write(iounit,*) "  Cp         = ",Cp
         write(iounit,*) "  ktherm     = ", ktherm
+      write(iounit,*) "  mushy_zero_salinity = ", mushy_zero_salinity
         write(iounit,*) "  conduct    = ", trim(conduct)
         write(iounit,*) "  fbot_xfer_type = ", trim(fbot_xfer_type)
         write(iounit,*) "  calc_Tsfc  = ", calc_Tsfc

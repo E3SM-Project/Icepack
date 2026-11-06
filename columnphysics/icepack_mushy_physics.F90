@@ -4,6 +4,7 @@ module icepack_mushy_physics
   use icepack_parameters, only: c0, c1, c2, c4, c1000
   use icepack_parameters, only: puny
   use icepack_parameters, only: rhow, rhoi, rhos, cp_ocn, cp_ice, Lfresh
+  use icepack_parameters, only: mushy_zero_salinity
   use icepack_parameters, only: ksno
   use icepack_tracers, only: nilyr
   use icepack_warnings, only: warnstr, icepack_warnings_add
@@ -21,6 +22,7 @@ module icepack_mushy_physics
        enthalpy_mush_liquid_fraction, &
        enthalpy_of_melting, &
        temperature_snow, &
+     icepack_mushy_state, &
        icepack_mushy_temperature_mush, &
        temperature_mush_liquid_fraction, &
        liquidus_brine_salinity_mush, &
@@ -83,15 +85,16 @@ contains
     integer(kind=int_kind) :: &
          k       ! ice layer index
 
-    real(kind=dbl_kind) :: Tmush
+    real(kind=dbl_kind) :: &
+         Tmush, &
+         phi
 
     character(len=*),parameter :: subname='(conductivity_mush_array)'
 
     do k = 1, nilyr
 
-       Tmush = icepack_mushy_temperature_mush(zqin(k), zSin(k))
-
-       km(k) = heat_conductivity(Tmush, zSin(k))
+        call icepack_mushy_state(zqin(k), zSin(k), Tmush, phi)
+        km(k) = phi * (kb - ki) + ki
 
     enddo ! k
 
@@ -385,6 +388,18 @@ contains
   !--------------------------------------------------------
 
   ! quadratic constants - higher temperature region
+      if (mushy_zero_salinity .and. zSin == c0) then
+           qb = -rhoi * Lfresh
+           if (zqin < qb) then
+                zTin = (zqin - qb) / (rhoi * cp_ice)
+           elseif (zqin <= c0) then
+                zTin = c0
+           else
+                zTin = zqin / (cp_ocn * rhow)
+           endif
+           return
+      endif
+
     AS1_liq = az1p_liq * (rhow * cp_ocn - rhoi * cp_ice)
     AC1_liq = rhoi * cp_ice * az1_liq
     BS1_liq = (c1 + bz1p_liq) * (rhow * cp_ocn - rhoi * cp_ice)  &
@@ -452,6 +467,42 @@ contains
   end function icepack_mushy_temperature_mush
 
 !=======================================================================
+! Temperature and liquid fraction from mush enthalpy and bulk salinity
+
+  subroutine icepack_mushy_state(zqin, zSin, zTin, phi)
+
+    real(kind=dbl_kind), intent(in) :: &
+         zqin, & ! ice enthalpy (J m-3)
+         zSin    ! ice layer bulk salinity (ppt)
+
+    real(kind=dbl_kind), intent(out) :: &
+         zTin, & ! ice layer temperature (C)
+         phi     ! ice layer liquid volume fraction
+
+    real(kind=dbl_kind) :: &
+         qsolid_melt
+
+    if (mushy_zero_salinity .and. zSin == c0) then
+       qsolid_melt = -rhoi * Lfresh
+
+       if (zqin < qsolid_melt) then
+          phi = c0
+          zTin = (zqin - qsolid_melt) / (rhoi * cp_ice)
+       elseif (zqin <= c0) then
+          zTin = c0
+          phi = c1 + zqin / (rhoi * Lfresh)
+       else
+          phi = c1
+          zTin = zqin / (cp_ocn * rhow)
+       endif
+    else
+       zTin = icepack_mushy_temperature_mush(zqin, zSin)
+       phi = icepack_mushy_liquid_fraction(zTin, zSin)
+    endif
+
+  end subroutine icepack_mushy_state
+
+!=======================================================================
 ! Temperature of mush from mush enthalpy and liquid fraction
 
   function temperature_mush_liquid_fraction(zqin, phi) result(zTin)
@@ -513,8 +564,16 @@ contains
 
     character(len=*),parameter :: subname='(icepack_mushy_liquid_fraction)'
 
-    Sbr = max(liquidus_brine_salinity_mush(zTin),puny)
-    phi = zSin / max(Sbr, zSin)
+      if (mushy_zero_salinity .and. zSin == c0) then
+           if (zTin > c0) then
+                phi = c1
+           else
+                phi = c0
+           endif
+      else
+           Sbr = max(liquidus_brine_salinity_mush(zTin),puny)
+           phi = zSin / max(Sbr, zSin)
+      endif
 
   end function icepack_mushy_liquid_fraction
 

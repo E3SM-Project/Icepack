@@ -46,6 +46,8 @@
 &thermo_nml
     kitd              = 1
     ktherm            = 2
+    mushy_zero_salinity = .false.
+    saltmax           = 3.2
     hi_min            = 0.01
     ksno              = 0.3d0
     conduct           = 'bubbly'

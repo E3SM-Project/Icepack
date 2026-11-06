@@ -5,6 +5,7 @@
   use icepack_kinds
   use icepack_parameters, only: c0, c1, c2, c8, c10
   use icepack_parameters, only: p01, p05, p1, p2, p5, pi, bignum, puny
+     use icepack_parameters, only: mushy_zero_salinity
   use icepack_parameters, only: viscosity_dyn, rhow, rhoi, rhos, cp_ocn, cp_ice, Lfresh, gravit, rhofresh
   use icepack_parameters, only: hs_min, snwgrain, semi_implicit_Tsfc
   use icepack_parameters, only: a_rapid_mode, Rac_rapid_mode, tscale_pnd_drain
@@ -14,7 +15,7 @@
   use icepack_tracers, only: nilyr, nslyr, tr_pond, tr_pond_sealvl
   use icepack_mushy_physics, only: icepack_mushy_density_brine, enthalpy_brine, icepack_enthalpy_snow
   use icepack_mushy_physics, only: enthalpy_mush_liquid_fraction
-  use icepack_mushy_physics, only: icepack_mushy_temperature_mush, icepack_mushy_liquid_fraction
+     use icepack_mushy_physics, only: icepack_mushy_state
   use icepack_mushy_physics, only: temperature_snow, temperature_mush_liquid_fraction
   use icepack_mushy_physics, only: liquidus_brine_salinity_mush, liquidus_temperature_mush
   use icepack_mushy_physics, only: conductivity_mush_array, conductivity_snow_array
@@ -150,7 +151,7 @@
          qpond       , & ! melt pond brine enthalpy (J m-3)
          Spond           ! melt pond salinity (ppt)
 
-    real(kind=dbl_kind) :: Tmlt, Iswabs_tmp, dt_rhoi_hlyr, ci, dswabs
+     real(kind=dbl_kind) :: Tmlt, zT_state, Iswabs_tmp, dt_rhoi_hlyr, ci, dswabs
 
     integer(kind=int_kind) :: &
          k               ! ice/snow layer index
@@ -186,7 +187,7 @@
     endif
 
     do k = 1, nilyr
-       phi(k) = icepack_mushy_liquid_fraction(icepack_mushy_temperature_mush(zqin(k),zSin(k)),zSin(k))
+     call icepack_mushy_state(zqin(k), zSin(k), zT_state, phi(k))
     enddo ! k
 
     ! calculate vertical bulk darcy flow
@@ -198,7 +199,7 @@
     if (icepack_warnings_aborted(subname)) return
 
     ! calculate quantities related to drainage
-    call explicit_flow_velocities(zSin,           &
+     call explicit_flow_velocities(zSin,  phi,     &
                                   zTin,   Tsf,    &
                                   Tbot,   q,      &
                                   dSdt,   Sbr,    &
@@ -1073,9 +1074,8 @@
 
     ! calculate initial ice temperatures
     do k = 1, nilyr
-       zTin(k) = icepack_mushy_temperature_mush(zqin(k), zSin(k))
+     call icepack_mushy_state(zqin(k), zSin(k), zTin(k), phi(k))
        Sbr(k)  = liquidus_brine_salinity_mush(zTin(k))
-       phi(k)  = icepack_mushy_liquid_fraction(zTin(k), zSin(k))
     enddo ! k
 
     if (lsnow) then
@@ -2805,13 +2805,16 @@
     integer :: &
          k         ! vertical layer index
 
-    real(kind=dbl_kind), parameter :: &
-         S_min = p01
+    real(kind=dbl_kind) :: &
+         S_min
 
     real(kind=dbl_kind), dimension(nilyr) :: &
          zSin0
 
     character(len=*),parameter :: subname='(solve_salinity)'
+
+     S_min = p01
+     if (mushy_zero_salinity) S_min = c0
 
     zSin0 = zSin
 
@@ -2931,7 +2934,7 @@
 
 !=======================================================================
 
-  subroutine explicit_flow_velocities(zSin,        &
+     subroutine explicit_flow_velocities(zSin,  phi,   &
                                       zTin,  Tsf,  &
                                       Tbot,  q,    &
                                       dSdt,  Sbr,  &
@@ -2944,6 +2947,7 @@
 
     real(kind=dbl_kind), dimension(:), intent(in) :: &
          zSin, &   ! ice layer bulk salinity (ppt)
+         phi,  &   ! ice layer liquid fraction
          zTin      ! ice layer temperature (C)
 
     real(kind=dbl_kind), intent(in) :: &
@@ -2968,11 +2972,7 @@
     real(kind=dbl_kind), parameter :: &
          kappal        = 8.824e-8_dbl_kind, & ! heat diffusivity of liquid
          fracmax       = p2               , & ! limiting advective layer fraction
-         zSin_min      = p1               , & ! minimum bulk salinity (ppt)
          safety_factor = c10                  ! to prevent negative salinities
-
-    real(kind=dbl_kind), dimension(1:nilyr) :: &
-         phi           ! ice layer liquid fraction
 
     real(kind=dbl_kind), dimension(0:nilyr) :: &
          rho           ! ice layer brine density (kg m-3)
@@ -2998,6 +2998,7 @@
          qlimit    , & ! limit to vertical Darcy flow for numerical stability
          dS_guess  , & ! expected bulk salinity without limits
          alpha     , & ! desalination limiting factor
+         zSin_min , & ! minimum bulk salinity (ppt)
          ra_constants  ! for Rayleigh number
 
     integer(kind=int_kind) :: &
@@ -3009,7 +3010,6 @@
     do k = 1, nilyr
 
        Sbr(k) = liquidus_brine_salinity_mush(zTin(k))
-       phi(k) = icepack_mushy_liquid_fraction(zTin(k), zSin(k))
        qbr(k) = enthalpy_brine(zTin(k))
        rho(k) = icepack_mushy_density_brine(Sbr(k))
 
@@ -3029,6 +3029,8 @@
 
     ! limit to q for numerical stability
     qlimit = (fracmax * hilyr) / dt
+     zSin_min = p1
+     if (mushy_zero_salinity) zSin_min = c0
 
     ! no flow through ice top surface
     q(0) = c0
