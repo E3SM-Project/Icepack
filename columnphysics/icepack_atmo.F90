@@ -121,6 +121,9 @@
 
       ! local variables
 
+      logical (kind=log_kind) :: &
+         use_stability_limiter  ! if true, apply stability limiter
+
       real (kind=dbl_kind), parameter :: &
          ustar_tiny = 1.e-3_dbl_kind, &
          tstar_tiny = 1.e-5_dbl_kind, &
@@ -258,6 +261,8 @@
       cp   = cp_air*(c1 + cpvir*ssq)
 
       if (.not. use_ice_atm_flux_reg) then ! the original flux scheme
+         use_stability_limiter = .true.
+
          !------------------------------------------------------------
          ! first estimate of Z/L and ustar, tstar and qstar
          !------------------------------------------------------------
@@ -286,12 +291,12 @@
             holm = compute_stability_parameter(zlvl , thva , &
                                              ustar, tstar, &
                                              qstar, Qa, &
-                                             .true.)
+                                             use_stability_limiter)
             if (present(zlvs)) then
                hols = compute_stability_parameter(zlvs , thva , &
                                                 ustar, tstar, &
                                                 qstar, Qa, &
-                                                .true.)
+                                                use_stability_limiter)
             else
                hols = holm
             endif
@@ -315,7 +320,8 @@
       else  ! the revised flux scheme
          ! first pass of the iteration without stability limiter
          !------------------------------------------------------------
-         call flux_iteration_with_stability(.false., &
+         use_stability_limiter = .false.
+         call flux_iteration_with_stability(use_stability_limiter, &
                                             ustar, tstar, qstar, &
                                             rd, rh, re, &
                                             hols, psixh, stable)
@@ -325,7 +331,8 @@
          if (abs(ustar) < ustar_tiny .or. abs(tstar) < tstar_tiny .or. abs(qstar) < qstar_tiny) then
             ! second pass of iteration with stability limiter
             !------------------------------------------------------------
-            call flux_iteration_with_stability(.true., &
+            use_stability_limiter = .true.
+            call flux_iteration_with_stability(use_stability_limiter, &
                                                ustar, tstar, qstar, &
                                                rd, rh, re, &
                                                hols, psixh, stable)
