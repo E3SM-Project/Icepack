@@ -117,6 +117,9 @@
     calc_strair     = .true.
     calc_Tsfc       = .true.
     highfreq        = .false.
+    use_ice_atm_flux_reg = .false.
+    ice_atm_flux_eps     = 0.1d0
+    ice_atm_flux_damping = 0.016d0
     natmiter        = -1
     atmiter_conv    = -1.0d0
     ustar_min       = 0.0005
