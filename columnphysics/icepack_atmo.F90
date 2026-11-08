@@ -1178,7 +1178,7 @@
       ! local variables
 
       real (kind=dbl_kind) :: &
-         psi_stable   , &    ! stable stability funcion at hol
+         psi_stable_all, & ! stable stability function at hol
          psi_unstable, &     ! unstable stability function at hol
          psi_stable_right, & ! stable branch at ice_atm_flux_eps
          psi_unstable_left   ! unstable branch at -ice_atm_flux_eps
@@ -1186,10 +1186,6 @@
       character(len=*),parameter :: subname='(compute_stability_function)'
 
       stable = p5 + sign(p5 , hol)
-
-      psi_stable = -(0.7_dbl_kind*hol &
-                 + 0.75_dbl_kind*(hol-14.3_dbl_kind) &
-                 * exp(-0.35_dbl_kind*hol) + 10.7_dbl_kind)
 
       if(trim(qty) == 'momentum') then
          psi_unstable = psi_momentum_unstable(hol)
@@ -1205,9 +1201,7 @@
             psi = psi_unstable
          elseif (hol < ice_atm_flux_eps) then
             ! linear interpolation across unstable and stable branches
-            psi_stable_right = -(0.7_dbl_kind*ice_atm_flux_eps &
-                     + 0.75_dbl_kind*(ice_atm_flux_eps-14.3_dbl_kind) &
-                     * exp(-0.35_dbl_kind*ice_atm_flux_eps) + 10.7_dbl_kind)
+            psi_stable_right = psi_stable(ice_atm_flux_eps)
             if (trim(qty) == 'momentum') then
                psi_unstable_left = psi_momentum_unstable(-ice_atm_flux_eps)
             elseif (trim(qty) == 'scalar') then
@@ -1217,10 +1211,12 @@
             psi = (psi_stable_right-psi_unstable_left) / (c2 * ice_atm_flux_eps) * hol &
                   + (psi_stable_right+psi_unstable_left) / c2
          else
-            psi = psi_stable
+            psi_stable_all = psi_stable(hol)
+            psi = psi_stable_all
          endif
       else
-         psi = psi_stable*stable + (c1 - stable)*psi_unstable
+         psi_stable_all = psi_stable(hol)
+         psi = psi_stable_all*stable + (c1 - stable)*psi_unstable
       endif ! end C0 regularization of psi
 
    end subroutine compute_stability_function
@@ -1228,6 +1224,18 @@
 !------------------------------------------------------------
 ! Define functions
 !------------------------------------------------------------
+
+!=======================================================================
+
+      real(kind=dbl_kind) function psi_stable(hol)
+
+      real(kind=dbl_kind), intent(in) :: hol
+
+      psi_stable = -(0.7_dbl_kind*hol &
+                 + 0.75_dbl_kind*(hol-14.3_dbl_kind) &
+                 * exp(-0.35_dbl_kind*hol) + 10.7_dbl_kind)
+
+      end function psi_stable
 
 !=======================================================================
 
