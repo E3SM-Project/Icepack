@@ -130,11 +130,10 @@
          qstar_tiny = 1.e-8_dbl_kind
 
       integer (kind=int_kind) :: &
-         k,n         ! iteration index
+         n           ! isotope index
 
       real (kind=dbl_kind) :: &
          TsfK  , & ! surface temperature in Kelvin (K)
-         psimh , & ! stability function at zlvl   (momentum)
          tau   , & ! stress at zlvl
          fac   , & ! interpolation factor
          al2   , & ! ln(z10   /zTrf)
@@ -148,18 +147,10 @@
 
       real (kind=dbl_kind) :: &
          ustar , & ! ustar (m/s)
-         ustar_prev , & ! ustar_prev (m/s)
-         ustar_next , & ! ustar_next (m/s)
          tstar , & ! tstar
-         tstar_prev , & ! tstar_prev
-         tstar_next , & ! tstar_next
          qstar , & ! qstar
-         qstar_prev , & ! qstar_prev
-         qstar_next , & ! qstar_next
          ratio , & ! ratio
          rdn   , & ! sqrt of neutral exchange coefficient (momentum)
-         rhn   , & ! sqrt of neutral exchange coefficient (heat)
-         ren   , & ! sqrt of neutral exchange coefficient (water)
          rd    , & ! sqrt of exchange coefficient (momentum)
          re    , & ! sqrt of exchange coefficient (water)
          rh    , & ! sqrt of exchange coefficient (heat)
@@ -168,7 +159,6 @@
          alzs  , & ! ln(zlvs  /z10) (if zlvs present)
          thva  , & ! virtual temperature      (K)
          cp    , & ! specific heat of moist air
-         holm  , & ! H (at zlvl  ) over L
          hols  , & ! H (at zlvs  ) over L (if zlvs present)
          stable, & ! stability factor
          cpvir , & ! defined as cp_wv/cp_air - 1.
@@ -262,61 +252,10 @@
 
       if (.not. use_ice_atm_flux_reg) then ! the original flux scheme
          use_stability_limiter = .true.
-
-         !------------------------------------------------------------
-         ! first estimate of Z/L and ustar, tstar and qstar
-         !------------------------------------------------------------
-
-         ! neutral coefficients, z/L = 0.0
-         rhn = rdn
-         ren = rdn
-
-         ! ustar,tstar,qstar
-         ustar = rdn * vmag
-         tstar = rhn * delt
-         qstar = ren * delq
-
-         !------------------------------------------------------------
-         ! iterate to converge on Z/L, ustar, tstar and qstar
-         !------------------------------------------------------------
-
-         ustar_prev = c2 * ustar
-
-         k = 1
-         do while (abs(ustar - ustar_prev)/ustar > atmiter_conv .and. k <= natmiter)
-            k = k + 1
-            ustar_prev = ustar
-
-            ! compute stability & evaluate all stability functions
-            holm = compute_stability_parameter(zlvl , thva , &
-                                             ustar, tstar, &
-                                             qstar, Qa, &
-                                             use_stability_limiter)
-            if (present(zlvs)) then
-               hols = compute_stability_parameter(zlvs , thva , &
-                                                ustar, tstar, &
-                                                qstar, Qa, &
-                                                use_stability_limiter)
-            else
-               hols = holm
-            endif
-
-            call compute_stability_function('momentum', holm, stable, psimh, use_ice_atm_flux_reg, &
-                                            ice_atm_flux_eps)
-            call compute_stability_function('scalar'  , hols, stable, psixh, use_ice_atm_flux_reg, &
-                                            ice_atm_flux_eps)
-
-            ! shift all coeffs to measurement height and stability
-            rd = rdn / (c1+rdn/vonkar*(alzm-psimh))
-            rh = rhn / (c1+rhn/vonkar*(alzs-psixh))
-            re = ren / (c1+ren/vonkar*(alzs-psixh))
-
-            ! update ustar, tstar, qstar using updated, shifted coeffs
-            ustar = rd * vmag
-            tstar = rh * delt
-            qstar = re * delq
-
-         enddo                     ! end iteration
+         call flux_iteration_with_stability(use_stability_limiter, &
+                                            ustar, tstar, qstar, &
+                                            rd, rh, re, &
+                                            hols, psixh, stable)
       else  ! the revised flux scheme
          ! first pass of the iteration without stability limiter
          !------------------------------------------------------------
@@ -459,11 +398,21 @@
          stable_out             ! stability factor (for psix2 calculation)
 
       ! Local variables
-      integer (kind=int_kind) :: k
+      integer (kind=int_kind) :: k ! iteration index
       real (kind=dbl_kind) :: &
-         ustar_prev, tstar_prev, qstar_prev, &
-         ustar_next, tstar_next, qstar_next, &
-         holm, hols, psimh, psixh, stable
+         ustar_prev, & ! previous momentum scale (m/s)
+         tstar_prev, & ! previous temperature scale (K)
+         qstar_prev, & ! previous specific humidity scale (kg/kg)
+         ustar_next, & ! undamped momentum scale for regularized convergence check (m/s)
+         tstar_next, & ! undamped temperature scale for regularized convergence check (K)
+         qstar_next, & ! undamped specific humidity scale for regularized convergence check (kg/kg)
+         holm,       & ! H (at zlvl) over L
+         hols,       & ! H (at zlvs) over L (if zlvs present)
+         psimh,      & ! stability function at zlvl (momentum)
+         psixh,      & ! stability function at zlvs (scalar)
+         stable,     & ! stability factor
+         rhn,        & ! sqrt of neutral exchange coefficient (heat)
+         ren           ! sqrt of neutral exchange coefficient (water)
 
       character(len=*),parameter :: subname='(flux_iteration_with_stability)'
 
@@ -484,25 +433,49 @@
       ! iterate to converge on Z/L, ustar, tstar and qstar
       !------------------------------------------------------------
 
-      ustar_prev = ustar
-      tstar_prev = tstar
-      qstar_prev = qstar
-      ustar_next = c2 * ustar
-      tstar_next = c2 * tstar
-      qstar_next = c2 * qstar
+      if (use_ice_atm_flux_reg) then
+         ! When regularization is active, damping is used to improve convergence of flux
+         ! iteration. This requires keeping track of the previous iterate x_n (i.e. _prev) as
+         ! well as the function evaluation f(x_n) (i.e. _next) in order to compute the residuals.
+         ustar_prev = ustar
+         tstar_prev = tstar
+         qstar_prev = qstar
+         ustar_next = c2 * ustar
+         tstar_next = c2 * tstar
+         qstar_next = c2 * qstar
+      else
+         ! When regularization is not active, we only need to keep track of x_n (i.e. ustar_prev)
+         ! and the next iterate (i.e. ustar). Since no damping is used, x_{n+1} = f(x_n) and
+         ! we don't need to store the function evaluation separately to compute the residual.
+         ustar_prev = c2 * ustar
+      endif
 
       k = 1
-      do while ( sqrt(((ustar_next - ustar_prev)/(abs(ustar_prev) + ustar_tiny))**2 + &
-                      ((tstar_next - tstar_prev)/(abs(tstar_prev) + tstar_tiny))**2 + &
-                      ((qstar_next - qstar_prev)/(abs(qstar_prev) + qstar_tiny))**2) > atmiter_conv)
+      do
+         if (use_ice_atm_flux_reg) then
+            ! When regularization is active, use the full residual corresponding to the entire system
+            ! of three equations.
+            if (.not. (sqrt(((ustar_next - ustar_prev)/(abs(ustar_prev) + ustar_tiny))**2 + &
+                           ((tstar_next - tstar_prev)/(abs(tstar_prev) + tstar_tiny))**2 + &
+                           ((qstar_next - qstar_prev)/(abs(qstar_prev) + qstar_tiny))**2) > atmiter_conv)) exit
+         else
+            ! When regularization is not active, only the residual for ustar is considered as
+            ! has been done in E3SMv3 and prior.
+            if (.not. (abs(ustar - ustar_prev)/ustar > atmiter_conv)) exit
+         endif
+
          if (k > natmiter) then
             call icepack_warnings_add('atmo_boundary_layer: flux iteration did not converge')
             exit
          endif
          k = k + 1
          ustar_prev = ustar
-         tstar_prev = tstar
-         qstar_prev = qstar
+         if (use_ice_atm_flux_reg) then
+            ! Convergence check when regularization is active requires previous iterates of all
+            ! unknowns to be stored.
+            tstar_prev = tstar
+            qstar_prev = qstar
+         endif
 
          ! compute stability & evaluate all stability functions
          holm = compute_stability_parameter(zlvl , thva , &
@@ -529,13 +502,24 @@
          re = ren / (c1+ren/vonkar*(alzs-psixh))
 
          ! update ustar, tstar, qstar using updated, shifted coeffs
-         ustar = ice_atm_flux_damping * rd * vmag + (c1 - ice_atm_flux_damping) * ustar_prev
-         tstar = ice_atm_flux_damping * rh * delt + (c1 - ice_atm_flux_damping) * tstar_prev
-         qstar = ice_atm_flux_damping * re * delq + (c1 - ice_atm_flux_damping) * qstar_prev
+         if (use_ice_atm_flux_reg) then
+            ! When regularization is active, damping is needed to ensure convergence. This damping
+            ! takes the form x_{n+1} = alpha * f(x_n) + (1 - alpha) * x_n, where alpha is the
+            ! damping factor.
+            ustar = ice_atm_flux_damping * rd * vmag + (c1 - ice_atm_flux_damping) * ustar_prev
+            tstar = ice_atm_flux_damping * rh * delt + (c1 - ice_atm_flux_damping) * tstar_prev
+            qstar = ice_atm_flux_damping * re * delq + (c1 - ice_atm_flux_damping) * qstar_prev
 
-         ustar_next = rd * vmag
-         tstar_next = rh * delt
-         qstar_next = re * delq
+            ! Store the function evaluation f(x_n) for the convergence check.
+            ustar_next = rd * vmag
+            tstar_next = rh * delt
+            qstar_next = re * delq
+         else
+            ! When regularization is not active, no damping is applied, i.e. x_{n+1} = f(x_n).
+            ustar = rd * vmag
+            tstar = rh * delt
+            qstar = re * delq
+         endif
 
       enddo                     ! end iteration
 
