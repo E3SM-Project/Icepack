@@ -396,8 +396,17 @@
 
                   do mm = 1,nbtrcr
                   do k = 1, nblyr + 1
-                     trcrn(bio_index(mm)+k-1-ntrcr_o,n) =   &
-                          (trtmp(k)/sss*ocean_bio_all(bio_index_o(mm)))
+                     if (sss > c0) then
+                        trcrn(bio_index(mm)+k-1-ntrcr_o,n) = &
+                             trtmp(k)/sss*ocean_bio_all(bio_index_o(mm))
+                     elseif (trtmp(k) == c0) then
+                        trcrn(bio_index(mm)+k-1-ntrcr_o,n) = c0
+                     else
+                        call icepack_warnings_add( &
+                             subname//' scale_bgc: nonzero ice salt with zero ocean SSS')
+                        call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+                        return
+                     endif
                      trcrn(bio_index(mm)+nblyr+1-ntrcr_o:bio_index(mm)+nblyr+2-ntrcr_o,n) = c0 ! snow
                   enddo  ! k
                   enddo  ! mm

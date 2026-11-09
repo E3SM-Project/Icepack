@@ -31,6 +31,7 @@
       use icepack_parameters, only: rfracmin, rfracmax, dpscale, frzpnd, snwgrain, snwlvlfac
       use icepack_parameters, only: phi_i_mushy, floeshape, floediam, use_smliq_pnd, snwredist
       use icepack_parameters, only: saltflux_option, congel_freeze, semi_implicit_Tsfc, vapor_flux_correction
+      use icepack_parameters, only: mushy_zero_salinity
       use icepack_parameters, only: icepack_chkoptargflag
 
       use icepack_tracers, only: ncat, nilyr, nslyr, nfsd
@@ -1352,7 +1353,11 @@
             hqtot = dzi(nilyr)*zqin(nilyr) + dhi*qbotm
             emlt_ocn = emlt_ocn - qbotw * dhi
          else ! two-step
-            qbotm = icepack_enthalpy_mush(Tbot, sss)
+            if (mushy_zero_salinity .and. sss == c0 .and. Tbot >= c0) then
+               qbotm = enthalpy_mush_liquid_fraction(Tbot, c1)
+            else
+               qbotm = icepack_enthalpy_mush(Tbot, sss)
+            endif
             qbotp = -Lfresh * rhoi * (c1 - phi_i_mushy)
             qbotw = qbotm - qbotp
             dhi = ebot_gro / qbotp     ! dhi > 0

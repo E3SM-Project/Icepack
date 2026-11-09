@@ -340,8 +340,23 @@
                          + a2*bTin(k)**2 &
                          + a3*bTin(k)**3
             brine_rho(k) = b1 + b2*brine_sal(k)
-            bphin    (k) = max(puny, bSin(k)*rhosi &
-                         / (brine_sal(k)*brine_rho(k)))
+            if (mushy_zero_salinity) then
+               if (brine_sal(k) > c0) then
+                  bphin(k) = max(c0, min(c1, bSin(k)*rhosi &
+                       / (brine_sal(k)*brine_rho(k))))
+               else
+                  if (bphin(k) <= c0) then
+                     call icepack_warnings_add(subname//' positive salt with zero porosity')
+                     call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+                     return
+                  endif
+                  brine_sal(k) = bSin(k)*rhosi / (bphin(k)*brine_rho(k))
+                  brine_rho(k) = b1 + b2*brine_sal(k)
+               endif
+            else
+               bphin(k) = max(puny, bSin(k)*rhosi &
+                    / (brine_sal(k)*brine_rho(k)))
+            endif
          endif
          bphin    (k) = min(c1, bphin(k))
          kin      (k) = k_o*bphin(k)**exp_h
@@ -488,34 +503,50 @@
                bphi_min   = bphin
                dhrunoff  = -dhS_top*aice0
                hbrocn    = max(c0,hbrocn - dhrunoff)
-               exp_arg = darcy_coeff/bphi_min*dt
+               if (bphi_min > c0) then
+                  exp_arg = darcy_coeff/bphi_min*dt
 ! tcraig avoids underflows
-               if (exp_arg > exp_argmax) then
-                  hbrocn_new = c0
+                  if (exp_arg > exp_argmax) then
+                     hbrocn_new = c0
+                  else
+                     hbrocn_new = hbrocn*exp(-exp_arg)
+                  endif
                else
-                  hbrocn_new = hbrocn*exp(-exp_arg)
+                  hbrocn_new = hbrocn
                endif
                hbr = max(hbrmin, h_ocn + hbrocn_new)
                hbrocn_new = hbr-h_ocn
-               darcy_V = -SIGN((hbrocn-hbrocn_new)/dt*bphi_min, hbrocn)
+               if (bphi_min > c0) then
+                  darcy_V = -SIGN((hbrocn-hbrocn_new)/dt*bphi_min, hbrocn)
+                  dhS_top = dhS_top - darcy_V*dt/bphi_min
+                  dh_top_chl = dh_top_chl - darcy_V*dt/bphi_min
+               endif
                darcy_V_chl= darcy_V
-               dhS_top    = dhS_top - darcy_V*dt/bphi_min + dhrunoff
-               dh_top_chl = dh_top_chl - darcy_V_chl*dt/bphi_min + dhrunoff
+               dhS_top = dhS_top + dhrunoff
+               dh_top_chl = dh_top_chl + dhrunoff
                dh_direct  = dhrunoff
             elseif (hbrocn < c0 .AND. hbr > thinS) then
-               exp_arg = darcy_coeff/bphi_min*dt
+               if (bphi_min > c0) then
+                  exp_arg = darcy_coeff/bphi_min*dt
 ! tcraig avoids underflows
-               if (exp_arg > exp_argmax) then
-                  hbrocn_new = c0
+                  if (exp_arg > exp_argmax) then
+                     hbrocn_new = c0
+                  else
+                     hbrocn_new = hbrocn*exp(-exp_arg)
+                  endif
                else
-                  hbrocn_new = hbrocn*exp(-exp_arg)
+                  hbrocn_new = hbrocn
                endif
                dhflood  = max(c0,hbrocn_new - hbrocn)*aice0
                hbr = max(hbrmin, h_ocn + hbrocn_new)
-               darcy_V    = -SIGN((hbrocn-hbrocn_new + dhflood)/dt*bphi_min, hbrocn)
+               if (bphi_min > c0) then
+                  darcy_V    = -SIGN((hbrocn-hbrocn_new + dhflood)/dt*bphi_min, hbrocn)
+                  dhS_top    = dhS_top - darcy_V*dt/bphi_min
+                  dh_top_chl = dh_top_chl - darcy_V*dt/bphi_min
+               endif
                darcy_V_chl= darcy_V
-               dhS_top    = dhS_top - darcy_V*dt/bphi_min - dhflood
-               dh_top_chl = dh_top_chl - darcy_V_chl*dt/bphi_min - dhflood
+               dhS_top = dhS_top - dhflood
+               dh_top_chl = dh_top_chl - dhflood
                dh_direct  = -dhflood
             endif
 
