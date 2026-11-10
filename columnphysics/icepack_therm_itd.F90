@@ -1327,7 +1327,7 @@
          frazils        , & ! frazil ice salt flux (kg/m2/s)
          frazilh            ! frazil ice enthalpy flux (+) (W/m2)
 
-      real (kind=dbl_kind), intent(inout), optional :: &
+      real (kind=dbl_kind), intent(out), optional :: &
          frazilSalt         ! total salt in new ice this step (kg/m2)
 
       ! local variables
@@ -1998,7 +1998,7 @@
          frazilh    , & ! frazil ice enthalpy flux (+) (W/m^2)
          dSin0_frazil_cell ! frazil bulk salinity reduction from sss (ppt)
 
-      real (kind=dbl_kind), intent(inout), optional :: &
+      real (kind=dbl_kind), intent(out), optional :: &
          frazilSalt     ! total salt in new ice this step (kg/m2)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
