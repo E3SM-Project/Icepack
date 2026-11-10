@@ -1241,7 +1241,8 @@
                               d_afsd_newi,           &
                               frazilm,               &
                               frazils,               &
-                              frazilh)
+                              frazilh,               &
+                              frazilSalt)
 
       use icepack_fsd, only: fsd_lateral_growth, fsd_add_new_ice
 
@@ -1325,6 +1326,9 @@
          frazilm        , & ! frazil ice mass flux (kg/m2/s)
          frazils        , & ! frazil ice salt flux (kg/m2/s)
          frazilh            ! frazil ice enthalpy flux (+) (W/m2)
+
+      real (kind=dbl_kind), intent(out), optional :: &
+         frazilSalt         ! total salt in new ice this step (kg/m2)
 
       ! local variables
 
@@ -1518,6 +1522,23 @@
 
       ! history diagnostics
       frazil = vi0new
+      ! Total salt in new ice this step (kg/m2), including lateral growth.
+      ! Use the new ice salinity Si0new (defined for mushy thermodynamics)
+      ! with omega-fluxes, where it is the salinity of the frazil supplied by
+      ! the ocean, or with prognostic salt fluxes; otherwise use the reference
+      ! salinity.
+      ! NOTE: with cpl_frazil = 'external' or 'omega-fluxes' none of this salt
+      ! is included in fsalt. With other cpl_frazil options the part -dfsalt*dt
+      ! computed below is also added to fsalt, so a host model salt budget
+      ! should not add both fsalt and frazilSalt in full.
+      if (present(frazilSalt)) then
+         if ((cpl_frazil == 'omega-fluxes' .or. saltflux_option == 'prognostic') &
+             .and. ktherm == 2) then
+            frazilSalt = Si0new * vi0new * rhoi/c1000
+         else
+            frazilSalt = ice_ref_salinity * vi0new * rhoi/c1000
+         endif
+      endif
 
       if (present(frz_onset) .and. present(yday)) then
          if (frazil > puny .and. frz_onset < puny) frz_onset = yday
@@ -1924,7 +1945,7 @@
                                      d_afsd_latm,  d_afsd_weld,   &
                                      dpnd_melt,    frazilm,       &
                                      frazils,      frazilh,       &
-                                     dSin0_frazil_cell)
+                                     dSin0_frazil_cell, frazilSalt)
 
       use icepack_parameters, only: icepack_init_parameters
 
@@ -1977,6 +1998,9 @@
          frazils    , & ! frazil ice salt flux (kg/m^2/s)
          frazilh    , & ! frazil ice enthalpy flux (+) (W/m^2)
          dSin0_frazil_cell ! frazil bulk salinity reduction from sss (ppt)
+
+      real (kind=dbl_kind), intent(out), optional :: &
+         frazilSalt     ! total salt in new ice this step (kg/m2)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
          aicen_init,& ! initial concentration of ice
@@ -2162,7 +2186,7 @@
                            wave_spectrum, wavefreq,     &
                            d_afsd_latg,   d_afsd_newi,  &
                            frazilm,       frazils,      &
-                           frazilh)
+                           frazilh,       frazilSalt)
 
          if (icepack_warnings_aborted(subname)) return
 
