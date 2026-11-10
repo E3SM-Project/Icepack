@@ -1945,7 +1945,7 @@
                                      d_afsd_latm,  d_afsd_weld,   &
                                      dpnd_melt,    frazilm,       &
                                      frazils,      frazilh,       &
-                                     frazilSalt,   dSin0_frazil_cell)
+                                     dSin0_frazil_cell, frazilSalt)
 
       use icepack_parameters, only: icepack_init_parameters
 
