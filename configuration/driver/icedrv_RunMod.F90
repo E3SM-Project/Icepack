@@ -113,6 +113,8 @@
       use icedrv_step, only: prep_radiation, step_therm1, step_therm2, &
           update_state, step_dyn_ridge, step_snow, step_radiation, &
           biogeochemistry, step_dyn_wave, step_lateral_flux_scm
+      use icedrv_mushy_diagnostics, only: mushy_sample, mushy_begin, &
+          mushy_before_coupling, mushy_end
 
       integer (kind=int_kind) :: &
          k               ! dynamics supercycling index
@@ -146,6 +148,7 @@
       !-----------------------------------------------------------------
 
       call init_mass_diags   ! diagnostics per timestep
+      if (mushy_sample()) call mushy_begin()
       call init_history_therm
       call init_history_bgc
 
@@ -218,7 +221,9 @@
       ! get ready for coupling and the next time step
       !-----------------------------------------------------------------
 
+      if (mushy_sample()) call mushy_before_coupling()
       call coupling_prep
+      if (mushy_sample()) call mushy_end()
 
 !      call icedrv_diagnostics_debug ('post step_rad, cpl')
 

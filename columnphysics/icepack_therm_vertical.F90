@@ -112,11 +112,15 @@
                                   mlt_onset,   frz_onset, &
                                   yday,        dsnow,     &
                                   prescribed_ice,         &
-                                  dpnd_flush,  dpnd_expon)
+                                  dpnd_flush,  dpnd_expon, &
+                                  energy_diagnostics, category)
 
       real (kind=dbl_kind), intent(in) :: &
          dt      , & ! time step
          frain       ! rainfall rate (kg/m2/s)
+
+      integer (kind=int_kind), intent(in) :: category
+      real (kind=dbl_kind), intent(inout), optional :: energy_diagnostics(6,ncat)
 
       ! ice state variables
       real (kind=dbl_kind), intent(inout) :: &
@@ -426,7 +430,8 @@
                                       fsnow,     einit,    &
                                       einter,    efinal,   &
                                       fcondtopn, fcondbotn, &
-                                      fadvocn,   fbot      )
+                                      fadvocn,   fbot,     &
+                                      energy_diagnostics, category)
       if (icepack_warnings_aborted(subname)) return
 
       !-----------------------------------------------------------------
@@ -1992,10 +1997,14 @@
                                             einit,    einter,   &
                                             efinal,             &
                                             fcondtopn,fcondbotn, &
-                                            fadvocn,  fbot      )
+                                            fadvocn,  fbot,     &
+                                            energy_diagnostics, category)
 
       real (kind=dbl_kind), intent(in) :: &
          dt              ! time step
+
+      integer (kind=int_kind), intent(in) :: category
+      real (kind=dbl_kind), intent(inout), optional :: energy_diagnostics(6,ncat)
 
       real (kind=dbl_kind), intent(in) :: &
          fsurfn      , & ! net flux to top surface, excluding fcondtopn
@@ -2035,6 +2044,9 @@
       einp = (fsurfn - flatn + fswint - fhocnn &
            - fsnow*Lfresh - fadvocn) * dt
       ferr = abs(efinal-einit-einp) / dt
+
+      if (present(energy_diagnostics)) energy_diagnostics(:,category) = &
+           [dt, einit, efinal, einp, efinal-einit-einp, ferr]
 
       if (ferr > 1.1_dbl_kind*ferrmax) then
          call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
@@ -2273,7 +2285,8 @@
                                     dpnd_expon  , dpnd_exponn , &
                                     dpnd_freebd , dpnd_freebdn, &
                                     dpnd_initial, dpnd_initialn, &
-                                    dpnd_dlid   , dpnd_dlidn)
+                                    dpnd_dlid   , dpnd_dlidn, &
+                                    energy_diagnostics)
 
       real (kind=dbl_kind), intent(in) :: &
          dt          , & ! time step
@@ -2289,6 +2302,9 @@
 
       logical (kind=log_kind), intent(in), optional :: &
          prescribed_ice  ! if .true., use prescribed ice instead of computed
+
+      real (kind=dbl_kind), intent(out), optional :: &
+         energy_diagnostics(6,ncat) ! dt, initial/final/input/residual energy, absolute residual rate
 
       real (kind=dbl_kind), intent(inout) :: &
          aice        , & ! sea ice concentration
@@ -2563,6 +2579,8 @@
          first_call = .true. ! first call flag
 
       character(len=*),parameter :: subname='(icepack_step_therm1)'
+
+      if (present(energy_diagnostics)) energy_diagnostics = c0
 
       !-----------------------------------------------------------------
       ! check optional arguments
@@ -2901,7 +2919,8 @@
                                  yday=yday,           dsnow=l_dsnown         , &
                                  prescribed_ice=prescribed_ice,                &
                                  dpnd_flush=l_dpnd_flushn,                     &
-                                 dpnd_expon=l_dpnd_exponn )
+                                 dpnd_expon=l_dpnd_exponn,                     &
+                                 energy_diagnostics=energy_diagnostics, category=n)
 
             if (icepack_warnings_aborted(subname)) then
                write(warnstr,*) subname, ' ice: Vertical thermo error, cat ', n

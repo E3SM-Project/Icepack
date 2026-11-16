@@ -92,6 +92,7 @@
       use icepack_shortwave, only: icepack_step_radiation
 
       use icepack_brine, only: icepack_init_hbrine
+      use icepack_brine, only: icepack_mushy_microstructure
 
       use icepack_zbgc , only: icepack_init_bgc
       use icepack_zbgc , only: icepack_init_zbgc
@@ -123,6 +124,10 @@
       use icepack_mushy_physics , only: icepack_mushy_density_brine
       use icepack_mushy_physics , only: icepack_mushy_liquid_fraction
       use icepack_mushy_physics , only: icepack_mushy_temperature_mush
+      use icepack_mushy_physics , only: icepack_mushy_state
+      use icepack_mushy_physics , only: icepack_mushy_frazil_state
+      use icepack_therm_mushy , only: icepack_mushy_permeability
+      use icepack_therm_mushy , only: icepack_mushy_flushing_velocity
 
       use icepack_warnings, only: icepack_warnings_clear
       use icepack_warnings, only: icepack_warnings_print

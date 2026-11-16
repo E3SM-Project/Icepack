@@ -396,6 +396,8 @@
 
                   do mm = 1,nbtrcr
                   do k = 1, nblyr + 1
+                     ! Scaling divides by ocean SSS; at zero, only zero mapped
+                     ! ice salt is consistent, otherwise stop instead of hiding it.
                      if (sss > c0) then
                         trcrn(bio_index(mm)+k-1-ntrcr_o,n) = &
                              trtmp(k)/sss*ocean_bio_all(bio_index_o(mm))

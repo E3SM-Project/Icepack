@@ -93,7 +93,7 @@ contains
     character(len=*),parameter :: subname='(conductivity_mush_array)'
 
     do k = 1, nilyr
-
+        ! Conductivity mixes ice and brine; use the enthalpy-derived phase fraction.
         call icepack_mushy_state(zqin(k), zSin(k), Tmush, phi)
         km(k) = phi * (kb - ki) + ki
 
@@ -290,6 +290,9 @@ contains
            rhoi * cp_ice * zTin - (c1 - phi) * rhoi * Lfresh
 
   end function icepack_enthalpy_mush
+!autodocument_start icepack_mushy_frazil_state
+! Native frazil state from ocean salinity and the configured liquidus-temperature
+! cap. Initialize parameters through icepack_intfc before calling.
      subroutine icepack_mushy_frazil_state(sss, zSin, zTin, zqin)
 
     real(kind=dbl_kind), intent(in) :: &
@@ -299,16 +302,20 @@ contains
          zSin     , & ! new frazil bulk salinity (ppt)
          zTin     , & ! new frazil temperature (C)
          zqin         ! new frazil enthalpy (J m-3)
+!autodocument_end
 
     real(kind=dbl_kind) :: Tliquidus
 
-    if (sss > c2 * dSin0_frazil) then
+     ! Preserve the native frazil salinity law; the cap changes its thermal state.
+     if (sss > c2 * dSin0_frazil) then
        zSin = sss - dSin0_frazil
     else
        zSin = sss**2 / (c4 * dSin0_frazil)
     endif
 
     Tliquidus = liquidus_temperature_mush(zSin / phi_init)
+     ! Preserve phi_init on the liquidus path; when capped, derive enthalpy from
+     ! the capped temperature and frazil salinity.
     zTin = min(Tliquidus, Tliquidus_max)
     if (zTin == Tliquidus) then
        zqin = enthalpy_mush_liquid_fraction(zTin, phi_init)
@@ -418,6 +425,8 @@ contains
   !--------------------------------------------------------
 
   ! quadratic constants - higher temperature region
+      ! With no salt, brine salinity is undefined; invert the pure-water solid,
+      ! melting-plateau, and liquid enthalpy branches directly.
       if (mushy_zero_salinity .and. zSin == c0) then
            qb = -rhoi * Lfresh
            if (zqin < qb) then
@@ -499,6 +508,9 @@ contains
 !=======================================================================
 ! Temperature and liquid fraction from mush enthalpy and bulk salinity
 
+!autodocument_start icepack_mushy_state
+! Temperature and liquid volume fraction from enthalpy and bulk salinity. At the
+! freshwater melting plateau the phase fraction is selected by enthalpy, not T.
   subroutine icepack_mushy_state(zqin, zSin, zTin, phi)
 
     real(kind=dbl_kind), intent(in) :: &
@@ -508,12 +520,15 @@ contains
     real(kind=dbl_kind), intent(out) :: &
          zTin, & ! ice layer temperature (C)
          phi     ! ice layer liquid volume fraction
+!autodocument_end
 
     real(kind=dbl_kind) :: &
          qsolid_melt, &
          heat_capacity_difference, &
          phase_denominator
 
+    ! At zero salinity the enthalpy interval determines the liquid fraction at
+    ! the freshwater melting point; temperature alone cannot recover it.
     if (mushy_zero_salinity .and. zSin == c0) then
        qsolid_melt = -rhoi * Lfresh
 
@@ -530,6 +545,8 @@ contains
     else
        zTin = icepack_mushy_temperature_mush(zqin, zSin)
            if (mushy_zero_salinity) then
+                ! Recover phase fraction from the enthalpy inversion instead of a
+                ! temperature-only shortcut when the zero-salinity closure is active.
                 heat_capacity_difference = cp_ocn * rhow - cp_ice * rhoi
                 phase_denominator = heat_capacity_difference * zTin + rhoi * Lfresh
                 if (phase_denominator > c0) then
@@ -607,6 +624,8 @@ contains
 
     character(len=*),parameter :: subname='(icepack_mushy_liquid_fraction)'
 
+      ! This temperature-only helper cannot resolve the freshwater melting
+      ! plateau; use icepack_mushy_state when enthalpy is available.
       if (mushy_zero_salinity .and. zSin == c0) then
            if (zTin > c0) then
                 phi = c1

@@ -32,7 +32,16 @@
   private
   public :: &
        temperature_changes_salinity, &
-       permeability
+       permeability, &
+       icepack_mushy_permeability, icepack_mushy_flushing_velocity
+
+  interface icepack_mushy_permeability
+     module procedure permeability
+  end interface
+
+  interface icepack_mushy_flushing_velocity
+     module procedure flushing_velocity
+  end interface
 
   real(kind=dbl_kind), parameter :: &
        dTemp_errmax = 5.0e-4_dbl_kind ! max allowed change in temperature
@@ -187,6 +196,7 @@
     endif
 
     do k = 1, nilyr
+     ! The paired state retains the enthalpy-derived phase on the fresh melt plateau.
      call icepack_mushy_state(zqin(k), zSin(k), zT_state, phi(k))
     enddo ! k
 
@@ -2813,6 +2823,7 @@
 
     character(len=*),parameter :: subname='(solve_salinity)'
 
+     ! Remove the legacy floor only when exact-zero salinity is enabled.
      S_min = p01
      if (mushy_zero_salinity) S_min = c0
 
@@ -2912,6 +2923,9 @@
 ! Effect of salinity
 !=======================================================================
 
+!autodocument_start icepack_mushy_permeability
+! Permeability (m2) from liquid volume fraction, including the connectivity cutoff.
+! Call this implementation through the public generic icepack_mushy_permeability.
   function permeability(phi) result(perm)
 
     ! given the liquid fraction calculate the permeability
@@ -2922,6 +2936,7 @@
 
     real(kind=dbl_kind) :: &
          perm                 ! permeability (m2)
+!autodocument_end
 
     real(kind=dbl_kind), parameter :: &
          phic = p05 ! critical liquid fraction for impermeability
@@ -3029,6 +3044,7 @@
 
     ! limit to q for numerical stability
     qlimit = (fracmax * hilyr) / dt
+     ! Keep the old desalination floor unless the zero-salinity closure is active.
      zSin_min = p1
      if (mushy_zero_salinity) zSin_min = c0
 
@@ -3104,6 +3120,10 @@
 ! Flushing
 !=======================================================================
 
+!autodocument_start icepack_mushy_flushing_velocity
+! Call this implementation through the public generic icepack_mushy_flushing_velocity.
+! Darcy flushing velocity for a configured column; initialize tracer sizes and
+! pond flags through icepack_intfc before calling. Inputs contain nilyr layers.
   subroutine flushing_velocity(zTin,   phi,   &
                                hin,    hsn,   &
                                hilyr,         &
@@ -3126,6 +3146,7 @@
 
     real(kind=dbl_kind), intent(out) :: &
          w             ! vertical flushing Darcy flow rate (m s-1)
+!autodocument_end
 
     real(kind=dbl_kind), parameter :: &
          advection_limit = 0.005_dbl_kind ! limit to fraction of brine in
