@@ -73,6 +73,63 @@ icepack_atm_boundary
 icepack_brine.F90
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. _icepack_mushy_microstructure:
+
+icepack_mushy_microstructure
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: fortran
+
+  ! Compute phase and transport properties on the biology grid. Initialize tracer
+  ! sizes/indices and icepack_init_hbrine first. Optional diagnostics contain only
+  ! interior layers, excluding the surface and ocean boundary points.
+        subroutine icepack_mushy_microstructure (trcrn,    hice_old,   hbr_old,    &
+                                         sss,      sst,        bTin,       &
+                                         iTin,     bphin,                  &
+                                         kperm,    bphi_min,               &
+                                         bSin,     brine_sal,  brine_rho,  &
+                                         iphin,    ibrine_rho, ibrine_sal, &
+                                         iDin,     iSin, &
+                                         enthalpy_out, liquid_fraction_before_out)
+
+        real (kind=dbl_kind), intent(in) :: &
+           hice_old    , & ! previous timestep ice height (m)
+           sss         , & ! ocean salinity (ppt)
+           sst             ! ocean temperature (C)
+
+        real (kind=dbl_kind), dimension(ntrcr), intent(in) :: &
+           trcrn
+
+        real (kind=dbl_kind), intent(out) :: &
+           kperm       , & ! average ice permeability (m^2)
+           bphi_min        ! surface porosity
+
+        real (kind=dbl_kind), intent(in) :: &
+           hbr_old         ! previous timestep brine height (m)
+
+        real (kind=dbl_kind), dimension (nblyr+1), intent(inout)  :: &
+           iDin            ! tracer diffusivity/h^2 (1/s) includes gravity drainage/molecular
+
+        real (kind=dbl_kind), dimension (nblyr+1), intent(inout)  :: &
+           iphin       , & ! porosity on the igrid
+           ibrine_rho  , & ! brine rho on interface
+           ibrine_sal  , & ! brine sal on interface
+           iTin        , & ! Temperature on the igrid (oC)
+           iSin            ! Salinity on the igrid (ppt)
+
+        real (kind=dbl_kind), dimension (nblyr+2), intent(inout)  :: &
+           bSin        , & ! bulk salinity (ppt) on bgrid
+           brine_sal   , & ! equilibrium brine salinity (ppt)
+           brine_rho       ! internal brine density (kg/m^3)
+
+        real (kind=dbl_kind), dimension (nblyr+2), intent(inout) :: &
+           bTin        , & ! Temperature on bgrid
+           bphin           ! porosity on bgrid
+
+        real (kind=dbl_kind), dimension(nblyr), intent(out), optional :: &
+           enthalpy_out, & ! remapped, nonpositive interior enthalpy (J m-3)
+           liquid_fraction_before_out ! interior liquid fraction before microstructure
+
+
 .. _icepack_init_hbrine:
 
 icepack_init_hbrine
@@ -253,6 +310,7 @@ icepack_intfc.F90
         use icepack_shortwave, only: icepack_step_radiation
   
         use icepack_brine, only: icepack_init_hbrine
+        use icepack_brine, only: icepack_mushy_microstructure
   
         use icepack_zbgc , only: icepack_init_bgc
         use icepack_zbgc , only: icepack_init_zbgc
@@ -284,6 +342,10 @@ icepack_intfc.F90
         use icepack_mushy_physics , only: icepack_mushy_density_brine
         use icepack_mushy_physics , only: icepack_mushy_liquid_fraction
         use icepack_mushy_physics , only: icepack_mushy_temperature_mush
+        use icepack_mushy_physics , only: icepack_mushy_state
+        use icepack_mushy_physics , only: icepack_mushy_frazil_state
+        use icepack_therm_mushy , only: icepack_mushy_permeability
+        use icepack_therm_mushy , only: icepack_mushy_flushing_velocity
   
         use icepack_warnings, only: icepack_warnings_clear
         use icepack_warnings, only: icepack_warnings_print
@@ -604,6 +666,25 @@ icepack_enthalpy_mush
   
  
 
+.. _icepack_mushy_frazil_state:
+
+icepack_mushy_frazil_state
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: fortran
+
+  ! Native frazil state from ocean salinity and the configured liquidus-temperature
+  ! cap. Initialize parameters through icepack_intfc before calling.
+       subroutine icepack_mushy_frazil_state(sss, zSin, zTin, zqin)
+
+      real(kind=dbl_kind), intent(in) :: &
+           sss      ! ocean salinity (ppt)
+
+      real(kind=dbl_kind), intent(out) :: &
+           zSin     , & ! new frazil bulk salinity (ppt)
+           zTin     , & ! new frazil temperature (C)
+           zqin         ! new frazil enthalpy (J m-3)
+
+
 .. _icepack_mushy_temperature_mush:
 
 icepack_mushy_temperature_mush
@@ -622,6 +703,25 @@ icepack_mushy_temperature_mush
            zTin       ! ice layer temperature (C)
   
  
+
+.. _icepack_mushy_state:
+
+icepack_mushy_state
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: fortran
+
+  ! Temperature and liquid volume fraction from enthalpy and bulk salinity. At the
+  ! freshwater melting plateau the phase fraction is selected by enthalpy, not T.
+    subroutine icepack_mushy_state(zqin, zSin, zTin, phi)
+
+      real(kind=dbl_kind), intent(in) :: &
+           zqin, & ! ice enthalpy (J m-3)
+           zSin    ! ice layer bulk salinity (ppt)
+
+      real(kind=dbl_kind), intent(out) :: &
+           zTin, & ! ice layer temperature (C)
+           phi     ! ice layer liquid volume fraction
+
 
 .. _icepack_mushy_liquid_fraction:
 
@@ -787,7 +887,7 @@ icepack_init_parameters
            awtvdr_in, awtidr_in, awtvdf_in, awtidf_in, &
            qqqice_in, TTTice_in, qqqocn_in, TTTocn_in, &
            ktherm_in, conduct_in, fbot_xfer_type_in, calc_Tsfc_in, &
-           update_ocn_f_in, ustar_min_in, hi_min_in, a_rapid_mode_in, &
+           update_ocn_f_in, mushy_zero_salinity_in, ustar_min_in, hi_min_in, a_rapid_mode_in, &
            cpl_frazil_in, semi_implicit_Tsfc_in, vapor_flux_correction_in, &
            Rac_rapid_mode_in, aspect_rapid_mode_in, &
            dSdt_slow_mode_in, phi_c_slow_mode_in, &
@@ -925,7 +1025,8 @@ icepack_init_parameters
            semi_implicit_Tsfc_in   , &! compute dfsurf/dT, dflat/dT terms instead of fsurf, flat
            vapor_flux_correction_in, &! compute mass/enthalpy correction when evaporation/sublimation
                               ! computed outside at 0C
-           update_ocn_f_in    ! include fresh water and salt fluxes for frazil
+           update_ocn_f_in,   &! include fresh water and salt fluxes for frazil
+           mushy_zero_salinity_in ! enable zero-salinity mushy phase closure
   
         real (kind=dbl_kind), intent(in), optional :: &
            hi_min_in,  &      ! minimum ice thickness allowed (m) for thermo
@@ -1352,6 +1453,7 @@ icepack_query_parameters
            qqqice_out, TTTice_out, qqqocn_out, TTTocn_out, update_ocn_f_out, &
            Lfresh_out, cprho_out, Cp_out, ustar_min_out, hi_min_out, a_rapid_mode_out, &
            ktherm_out, conduct_out, fbot_xfer_type_out, calc_Tsfc_out, &
+           mushy_zero_salinity_out, &
            Rac_rapid_mode_out, aspect_rapid_mode_out, dSdt_slow_mode_out, &
            phi_c_slow_mode_out, phi_i_mushy_out, shortwave_out, semi_implicit_Tsfc_out, &
            albedo_type_out, albicev_out, albicei_out, albsnowv_out, vapor_flux_correction_out, &
@@ -1496,7 +1598,8 @@ icepack_query_parameters
            semi_implicit_Tsfc_out    ,&! compute dfsurf/dT, dflat/dT terms instead of fsurf, flat
            vapor_flux_correction_out ,&! compute mass/enthalpy correction when evaporation/sublimation
                               ! computed outside at 0C
-           update_ocn_f_out   ! include fresh water and salt fluxes for frazil
+           update_ocn_f_out,  &! include fresh water and salt fluxes for frazil
+           mushy_zero_salinity_out ! enable zero-salinity mushy phase closure
   
         real (kind=dbl_kind), intent(out), optional :: &
            hi_min_out,  &      ! minimum ice thickness allowed (m) for thermo
@@ -2361,6 +2464,62 @@ icepack_step_therm2
   
  
 
+icepack_therm_mushy.F90
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. _icepack_mushy_permeability:
+
+icepack_mushy_permeability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: fortran
+
+  ! Permeability (m2) from liquid volume fraction, including the connectivity cutoff.
+  ! Call this implementation through the public generic icepack_mushy_permeability.
+    function permeability(phi) result(perm)
+
+      ! given the liquid fraction calculate the permeability
+      ! See Golden et al. 2007
+
+      real(kind=dbl_kind), intent(in) :: &
+           phi                  ! liquid fraction
+
+      real(kind=dbl_kind) :: &
+           perm                 ! permeability (m2)
+
+
+.. _icepack_mushy_flushing_velocity:
+
+icepack_mushy_flushing_velocity
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+.. code-block:: fortran
+
+  ! Call this implementation through the public generic icepack_mushy_flushing_velocity.
+  ! Darcy flushing velocity for a configured column; initialize tracer sizes and
+  ! pond flags through icepack_intfc before calling. Inputs contain nilyr layers.
+    subroutine flushing_velocity(zTin,   phi,   &
+                                 hin,    hsn,   &
+                                 hilyr,         &
+                                 hpond,  apond, &
+                                 dt,     w)
+
+      ! calculate the vertical flushing Darcy velocity (positive downward)
+
+      real(kind=dbl_kind), dimension(:), intent(in) :: &
+           zTin      , & ! ice layer temperature (C)
+           phi           ! ice layer liquid fraction
+
+      real(kind=dbl_kind), intent(in) :: &
+           hilyr     , & ! ice layer thickness (m)
+           hpond     , & ! melt pond thickness (m)
+           apond     , & ! melt pond area fraction of category (-)
+           hsn       , & ! snow thickness (m)
+           hin       , & ! ice thickness (m)
+           dt            ! time step (s)
+
+      real(kind=dbl_kind), intent(out) :: &
+           w             ! vertical flushing Darcy flow rate (m s-1)
+
+
 icepack_therm_shared.F90
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -2610,7 +2769,8 @@ icepack_step_therm1
                                       dpnd_expon  , dpnd_exponn , &
                                       dpnd_freebd , dpnd_freebdn, &
                                       dpnd_initial, dpnd_initialn, &
-                                      dpnd_dlid   , dpnd_dlidn)
+                                      dpnd_dlid   , dpnd_dlidn, &
+                                      energy_diagnostics)
   
         real (kind=dbl_kind), intent(in) :: &
            dt          , & ! time step
@@ -2627,6 +2787,9 @@ icepack_step_therm1
         logical (kind=log_kind), intent(in), optional :: &
            prescribed_ice  ! if .true., use prescribed ice instead of computed
   
+        real (kind=dbl_kind), intent(out), optional :: &
+           energy_diagnostics(6,ncat) ! per category: dt (s), initial/final/input/residual energy (J m-2), absolute residual (W m-2)
+
         real (kind=dbl_kind), intent(inout) :: &
            aice        , & ! sea ice concentration
            vice        , & ! volume per unit area of ice            (m)

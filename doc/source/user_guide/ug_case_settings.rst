@@ -136,6 +136,9 @@ setup_nml
    "``days_per_year``", "integer", "number of days in a model year", "365"
    "``diagfreq``", "integer", "frequency of diagnostic output in timesteps", "24"
    "``diag_file``", "string", "diagnostic output filename", "'ice_diag'"
+   "``mushy_diagnostics``", "logical", "write optional mushy-layer CSV diagnostics; see :ref:`mushy_testing`", "``.false.``"
+   "``mushy_diagfreq``", "positive integer", "column diagnostic sampling interval in timesteps", "1"
+   "``mushy_profilefreq``", "positive integer", "additional ice/snow profile and local energy sampling interval; both intervals must select the step", "1"
    "``dumpfreq``", "``d``", "write restart every ``dumpfreq_n`` days", "``y``"
    "", "``m``", "write restart every ``dumpfreq_n`` months", ""
    "", "``y``", "write restart every ``dumpfreq_n`` years", ""
@@ -222,6 +225,7 @@ thermo_nml
    "``ktherm``", "``-1``", "thermodynamic model disabled", "1"
    "", "``1``", "Bitz and Lipscomb thermodynamic model", ""
    "", "``2``", "mushy-layer thermodynamic model", ""
+   "``mushy_zero_salinity``", "logical", "allow exact-zero bulk ice salinity with ``ktherm=2``; see :ref:`thermo-mushy-zero-salinity`", "``.false.``"
    "``phi_c_slow_mode``", ":math:`0<\phi_c < 1`", "critical liquid fraction", "0.05"
    "``phi_i_mushy``", ":math:`0<\phi_i < 1`", "solid fraction at lower boundary", "0.85"
    "``Rac_rapid_mode``", "real", "critical Rayleigh number", "10.0"
@@ -326,6 +330,11 @@ snow_nml
 
 forcing_nml
 ~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``nfreq`` is the number of wave frequencies passed to the public parameter
+initializer.  Its default is the configured Icepack default (25 in the supplied
+namelist).  Wave-free pinned scientific configurations can explicitly select
+zero without modifying driver source.
 
 .. csv-table:: **forcing_nml namelist options**
    :header: "variable", "options/format", "description", "default value"

@@ -14,6 +14,8 @@ developers will need to provide a summary of the tests carried out.
 There is a base suite of tests provided by default with Icepack and this
 may be a good starting point for testing.
 
+An opt-in scientific mushy-layer suite is described in :ref:`mushy_testing`.
+
 The testing scripts support several features
  - Ability to test individual (via ``--test``)or multiple tests (via ``--suite``)
    using an input file to define the suite or suites
@@ -584,4 +586,222 @@ This plotting script can be used to plot the following variables:
   - congelation (m)
   - snow-ice (m)
   - initial energy change (:math:`W/m^2`)
+
+.. _mushy_testing:
+
+Mushy-layer scientific validation
+---------------------------------
+
+``configuration/scripts/tests/test_mushy_layer.py`` is a self-contained Python
+3.10+ tool.  It needs no third-party Python packages.  Model runs require a
+working native Icepack machine environment, C/Fortran compilers, make, csh and
+``/usr/bin/time``.  T2 also requires Git and an available baseline ref.
+Downloads prefer system ``curl`` (with TLS verification); otherwise Python's
+HTTPS client is used.  Configure the trusted CA bundle normally if necessary;
+certificate checks must not be disabled.
+
+The scientific formulation exercised by these tests, including the
+enthalpy-dependent zero-salinity phase interval and the native frazil
+salinity law, is documented in :ref:`thermo-mushy-zero-salinity` and
+:ref:`ocean`. The suite covers both direct phase-state checks and integrated
+driver behavior; it does not replace the standard smoke/restart tests.
+
+The tool uses ``icepack.setup`` and the selected machine's environment/Macros.
+It does not replace compiler settings, activate a fictitious environment, edit
+physics sources, or rely on code outside this Icepack checkout.  Build/run
+directories are private to a new output directory; native case paths must not
+contain whitespace or shell metacharacters.  Do not run overlapping experiments
+in the same output directory or edit the sources/tool during a run.
+
+Standalone usage, from the checkout root::
+
+  python3 configuration/scripts/tests/test_mushy_layer.py list
+  python3 configuration/scripts/tests/test_mushy_layer.py self-test
+  python3 configuration/scripts/tests/test_mushy_layer.py run \
+    --machine conda --environment macos --suite core --output /new/core-results
+  python3 configuration/scripts/tests/test_mushy_layer.py run \
+    --machine conda --environment macos --suite extended --output /new/full-results
+  python3 configuration/scripts/tests/test_mushy_layer.py run \
+    --machine conda --environment macos --tests T1,T7,T10-brine \
+    --offline --output /new/selected-results
+
+Replace the example machine/environment with a supported local pair.
+``--icepack-root`` selects another checkout.  ``--tests`` overrides the suite;
+``extended`` includes all core entries.  T2 compares a saline default-off
+restart with a separately built ``--baseline-ref`` (default ``HEAD``).  Use the
+pre-change commit explicitly when evaluating regression against earlier code.
+The exact detached reference commit and source hashes are recorded.
+
+The tool writes ``TEST_RESULTS.md``, SVG figures, measured-value tables, raw
+CSV diagnostics/restarts, command/build logs, ``results.json`` and
+``manifest.json``.  Existing output directories are rejected.  A failed command
+or missing/nonfinite/malformed selected input is an error, never a skipped test
+or a passing default.  Exit codes are 0 for satisfied selected acceptance
+criteria (or completed descriptive studies), 1 for unmet acceptance/convergence
+criteria, and 2 for input/build/execution errors.  An extended run can therefore
+finish all experiments and return 1 for nonconvergence.
+
+To verify evidence or regenerate its description::
+
+  python3 configuration/scripts/tests/test_mushy_layer.py validate --results /new/full-results
+  python3 configuration/scripts/tests/test_mushy_layer.py report --results /new/full-results
+
+Validation checks required evidence layouts, hashes and recorded verdicts, and
+independently recomputes conservation identities.  The manifest is not signed;
+these checks do not authenticate results against coordinated modification.
+Success means the checked evidence is consistent, not that every scientific
+criterion passed.  Read the separate scientific verdicts in the report.
+Reproduction from a different checkout/compiler must be a new run, not relabelled
+historical evidence.
+
+Input preparation and offline execution
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Missing inputs needed by the selected tests are fetched automatically, pinned
+to exact SHA-256 values in the script.  Synthetic core tests need no downloads.
+Only T9 needs the observation table; T13--T15 need the sample forcing archive.
+To prepare a compute node before disconnecting::
+
+  python3 configuration/scripts/tests/test_mushy_layer.py fetch-data --suite extended \
+    --cache-dir /private/icepack-input-cache
+  python3 configuration/scripts/tests/test_mushy_layer.py run --suite extended \
+    --machine MACHINE --environment ENVIRONMENT --offline \
+    --cache-dir /private/icepack-input-cache --output /new/offline-results
+
+The default cache is ``~/.cache/icepack/mushy``.  Verified cached archives/files
+are reused; extracted archive members are checked again against the pinned
+archive.  Downloads are bounded and atomically published only after checksum
+verification.  Archive paths, links and special files are rejected.  No shared
+``ICEPACK_DATA`` directory is overwritten.  A corrupt cache is an explicit
+error: remove the identified private entry deliberately before refetching.
+``--offline`` makes no network requests and fails if selected inputs are absent.
+Prescribed-forcing runs stage verified copies under short local filenames in
+the driver's ``NICE_2015`` layout, avoiding its fixed-length filename limit.
+
+Attribution and exact upstream sources:
+
+* Icepack sample data version 20200326:
+  https://doi.org/10.5281/zenodo.3728287.  The archive's SHA-256 is
+  ``eb706ec09d4d35d6da3a118c8cba79d7d727e3d6aed19568e24423b92d3ea6bc``.
+  Upstream attribution remains in the extracted distribution.
+* MOSAiC first-year ice-core table, CC BY 4.0:
+  https://doi.org/10.1594/PANGAEA.971385.  The table's SHA-256 is
+  ``f7a13410394126aac95a56e218988f7ee8a4e4abe512c0e7b618c520df350f81``.
+  T9 selects PS122/1_5-3, sample PS122-1_5-FYI, 2019-10-27 23:46 UTC:
+  eight sections over 0.420 m.  Practical salinity is treated numerically as
+  ppt (a documented 1:1 approximation).
+
+Scientific coverage and limits
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. list-table::
+   :header-rows: 1
+   :widths: 15 85
+
+   * - Entry
+     - Scope
+   * - T1
+     - Seven exact freshwater cases and an 80-state analytical binary-mixture grid.
+   * - T2
+     - Eighteen compiled phase states, positive-salinity flag parity, 53 frazil
+       salinities under two caps with enthalpy reconstruction, and a default-off
+       saline restart comparison against the recorded ref.
+   * - T3
+     - Freshwater integration, split restart, and diagnostics-on/off equivalence.
+   * - T4
+     - One-step/two-step basal growth and salinity below the legacy floor.
+   * - T5
+     - 4/7/10/14/20/28-layer study, preserving the initial discrete mean salinity.
+   * - T6
+     - Active topographic-pond freshwater feedback and coupling identity.
+   * - T7
+     - Controlled permeability cutoff, flushing connectivity and derived
+       freshwater, salt and enthalpy fluxes.
+   * - T8
+     - Whole-cell water/salt, nonvacuous zero-SSS frazil with zero new-frazil
+       salinity/correction salt, zero/tiny-salinity comparison and local heat.
+   * - T9
+     - Conservative observed-profile adaptation, not a transient hindcast.
+   * - T10-brine
+     - Active-brine zero/tiny-salinity flag pairs, seven controlled profiles,
+       and public-API replay of integrated freshwater profiles.
+   * - T10-BGC
+     - Active-tracer initializer, tiny-positive scaling and zero-denominator guard.
+   * - T10
+     - A 365-day flag off/on pair plus eleven paired one-day namelist families.
+   * - T10-cost
+     - 7/20 ice layers, five snow layers, four-cell debug and I/O-included timing.
+   * - T13
+     - Two-year prescribed control/salinity-notch sensitivity at 7/20 ice layers.
+   * - T14
+     - The same forcing at 7/10/14/20/28 layers with fixed refinement criteria.
+   * - T15
+     - Flag off/on prescribed-forcing sensitivity at 7/20 ice layers.
+
+T11/T12 are unperformed and are not counted as coverage.  The pinned extended
+settings are an example of a current Icepack configuration used in Earth system
+models, not a coupled-model validation.  T13--T15 repeat a 365-day forcing year
+twice and introduce six Gaussian salinity notches with exact-zero daily
+centres; other numerical ocean fields remain unchanged.
+
+The integrated T1 grid does not independently assert all small-salinity
+asymptotic and branch-boundary continuity checks represented in the archived
+development evidence.  This is a coverage limitation of T1, not a dependency
+on code outside the Icepack repository.
+
+T5 compares 10 versus 14 layers on a common 101-point depth grid with fixed
+limits of 0.1 C, 0.01 liquid fraction, 0.05 ppt and 2 percent basal growth.
+T14 requires both temperature and net-salt-flux criteria for both cases and
+target cells on two successive adjacent refinement pairs.  Limits are 0.1 C
+and 2 percent relative L1 salt flux, with an absolute 1e-6 kg/m2 tolerance
+when the fine-grid reference integral is at most 1e-6 kg/m2.  Failure is reported
+as nonconvergence, not converted into acceptance by changing thresholds.
+
+T8 uses 1e-8 kg/m2 whole-cell water/salt tolerances and 1.1e-3 W/m2 for local
+thermodynamic heat.  The water inventory includes ice, snow and topographic
+pond water, with explicit precipitation, evaporation, frazil and drainage
+terms.  These checks do not close full coupled/pond energy or salt budgets.
+BGC initializer checks do not establish later tracer evolution.  Cost includes
+normal diagnostic/restart I/O but excludes environment startup from the
+executable timing; it is not production throughput or a performance threshold.
+
+For freshwater, phase acceptance is enthalpy-dependent: below
+``-rhoi*Lfresh`` the state is solid; from that endpoint to zero enthalpy the
+temperature is zero and liquid fraction is ``1 + q/(rhoi*Lfresh)``; above zero
+enthalpy it is liquid.  Brine checks preserve tiny positive liquid fractions,
+test exact solid impermeability, and compare remapped enthalpy and harmonic
+permeability.  Integrated profiles are replayed through the supported
+microstructure interface, not obtained by source instrumentation.
+
+Native test integration and optional diagnostics
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The dedicated suite adds native freshwater smoke/restart configurations and
+the scientific core test, without changing existing tests or default suites::
+
+  ./icepack.setup --suite mushy_suite --mach MACHINE --env ENVIRONMENT --testid ID
+
+An individual scientific test can also be created::
+
+  ./icepack.setup --test mushy_layer --mach MACHINE --env ENVIRONMENT \
+    --set debug,mushyfresh,run1day --testid ID
+
+Use the normal native build/submit workflow.  The wrapper first runs a canonical
+native case for ``baseline.script`` and then writes scientific ensemble evidence
+under a unique ``${ICE_CASEDIR}/mushy-results.XXXXXX/results`` directory for
+each invocation.  Standard native ``--bgen``/``--bcmp``
+continue to operate on the canonical restart, separately from scientific
+criteria.  Python is needed only for ``mushy_layer``, not existing smoke/restart
+tests.  Extended studies remain explicit standalone selections.
+
+Optional ``setup_nml`` variables ``mushy_diagnostics``, ``mushy_diagfreq`` and
+``mushy_profilefreq`` control driver-owned CSV output.  They are off by default.
+Positive sampling intervals select column samples and, additionally, ice/snow
+profiles and local energy samples.  Files are ``mushy_columns.csv``,
+``mushy_layers.csv``, ``mushy_snow.csv`` and ``mushy_energy.csv``; headers include
+units.  The energy interface returns per-category timestep, initial/final/input
+energy, signed residual and absolute residual rate.  No diagnostic I/O is added
+to column physics.  Test clients configure Icepack first, use public interfaces
+with keyword arguments, and flush/check warning/abort state after calls, following
+:ref:`dev_testing` and the public-interface protocols.
 
