@@ -1242,7 +1242,8 @@
                               frazilm,               &
                               frazils,               &
                               frazilh,               &
-                              frazilSalt)
+                              frazilSalt,            &
+                              frazilEnergy)
 
       use icepack_fsd, only: fsd_lateral_growth, fsd_add_new_ice
 
@@ -1328,7 +1329,8 @@
          frazilh            ! frazil ice enthalpy flux (+) (W/m2)
 
       real (kind=dbl_kind), intent(out), optional :: &
-         frazilSalt         ! total salt in new ice this step (kg/m2)
+         frazilSalt     , & ! total salt in new ice this step (kg/m2)
+         frazilEnergy       ! total enthalpy of new ice this step (J/m2)
 
       ! local variables
 
@@ -1539,6 +1541,11 @@
             frazilSalt = ice_ref_salinity * vi0new * rhoi/c1000
          endif
       endif
+
+      ! Total enthalpy of new ice this step (J/m2, < 0), including lateral
+      ! growth. All new ice, including lateral growth and the excess volume
+      ! added to existing categories, is added with enthalpy qi0new.
+      if (present(frazilEnergy)) frazilEnergy = qi0new * vi0new
 
       if (present(frz_onset) .and. present(yday)) then
          if (frazil > puny .and. frz_onset < puny) frz_onset = yday
@@ -1945,7 +1952,8 @@
                                      d_afsd_latm,  d_afsd_weld,   &
                                      dpnd_melt,    frazilm,       &
                                      frazils,      frazilh,       &
-                                     dSin0_frazil_cell, frazilSalt)
+                                     dSin0_frazil_cell, frazilSalt, &
+                                     frazilEnergy)
 
       use icepack_parameters, only: icepack_init_parameters
 
@@ -2000,7 +2008,8 @@
          dSin0_frazil_cell ! frazil bulk salinity reduction from sss (ppt)
 
       real (kind=dbl_kind), intent(out), optional :: &
-         frazilSalt     ! total salt in new ice this step (kg/m2)
+         frazilSalt , & ! total salt in new ice this step (kg/m2)
+         frazilEnergy   ! total enthalpy of new ice this step (J/m2)
 
       real (kind=dbl_kind), dimension(:), intent(inout) :: &
          aicen_init,& ! initial concentration of ice
@@ -2186,7 +2195,8 @@
                            wave_spectrum, wavefreq,     &
                            d_afsd_latg,   d_afsd_newi,  &
                            frazilm,       frazils,      &
-                           frazilh,       frazilSalt)
+                           frazilh,       frazilSalt,   &
+                           frazilEnergy)
 
          if (icepack_warnings_aborted(subname)) return
 
