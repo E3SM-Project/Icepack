@@ -26,6 +26,7 @@ success is not evidence that a convergence criterion has been met.
 from __future__ import annotations
 
 import argparse
+import colorsys
 import csv
 import hashlib
 import html
@@ -66,11 +67,11 @@ CASES = {
     "T10-BGC": Case("Active BGC scaling initializer and guard", True),
     "T10": Case("Annual freshwater namelist matrix", False),
     "T10-cost": Case("Four-cell debug and I/O-included cost", False, "descriptive"),
-    "T13": Case("Two-year prescribed salinity-notch sensitivity", False,
+    "T11": Case("Two-year prescribed salinity-notch sensitivity", False,
                 "descriptive", ("forcing",)),
-    "T14": Case("Prescribed-forcing 7/10/14/20/28-layer convergence", False,
+    "T12": Case("Prescribed-forcing 7/10/14/20/28-layer convergence", False,
                 "convergence", ("forcing",)),
-    "T15": Case("Prescribed-forcing flag off/on sensitivity", False,
+    "T13": Case("Prescribed-forcing flag off/on sensitivity", False,
                 "descriptive", ("forcing",)),
 }
 
@@ -93,6 +94,7 @@ DATASETS = {
     },
 }
 NUMBER = re.compile(r"(?<![A-Za-z0-9_.])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][-+]?\d+)?")
+RESULT_SCHEMA = 3
 FRESH = {
     "npt": "48", "dumpfreq": "'d'", "dump_last": ".true.",
     "history_format": "'none'", "tr_pond_lvl": ".false.",
@@ -716,6 +718,171 @@ def layer_checks(run: Path, fresh: bool = False) -> list[dict[str, object]]:
     return checks
 
 
+def t13_profiles(run: Path, layers: int, days: int = 730) -> dict:
+    """Read complete daily active-category profiles; absence means no active ice."""
+    profiles = {}
+    for row in csv_rows(run / "mushy_layers.csv"):
+        step, cell, category, layer = (int(row[name]) for name in ("step", "cell", "category", "layer"))
+        if (any(row[name] != value for name, value in zip(("step", "cell", "category", "layer"),
+                                                           (step, cell, category, layer)))
+                or step % 48 or not 1 <= step // 48 <= days
+                or cell not in (2, 3) or not 1 <= category <= 5 or not 1 <= layer <= layers):
+            raise ValueError(f"invalid T13 ice profile index in {run}")
+        key = (step // 48, cell, category)
+        profile = profiles.setdefault(key, {"ice": {}, "snow": {},
+                                            "area": row["aicen_fraction"],
+                                            "ice_volume": row["vicen_m"],
+                                            "snow_volume": row["vsnon_m"]})
+        if (layer in profile["ice"] or row["aicen_fraction"] <= 0 or row["vicen_m"] <= 0
+                or row["vsnon_m"] < 0 or any(profile[name] != row[source] for name, source in (
+                    ("area", "aicen_fraction"), ("ice_volume", "vicen_m"), ("snow_volume", "vsnon_m")))):
+            raise ValueError(f"duplicate or inconsistent T13 ice profile in {run}: {key}")
+        profile["ice"][layer] = row
+    for row in csv_rows(run / "mushy_snow.csv"):
+        step, cell, category, layer = (int(row[name]) for name in ("step", "cell", "category", "layer"))
+        key = (step // 48, cell, category)
+        if (any(row[name] != value for name, value in zip(("step", "cell", "category", "layer"),
+                                                           (step, cell, category, layer)))
+                or step % 48 or key not in profiles or not 1 <= layer <= 5
+                or layer in profiles[key]["snow"]):
+            raise ValueError(f"invalid or duplicate T13 snow profile in {run}: {key}")
+        profiles[key]["snow"][layer] = row
+    for key, profile in profiles.items():
+        if set(profile["ice"]) != set(range(1, layers + 1)) or set(profile["snow"]) != set(range(1, 6)):
+            raise ValueError(f"incomplete T13 layer profile in {run}: {key}")
+    if {key[1] for key in profiles} != {2, 3}:
+        raise ValueError(f"T13 requires active profiles in both target cells: {run}")
+    return profiles
+
+
+def t13_series(profiles: dict, cell: int, category: int | None, layers: int, days: int = 730) -> list:
+    """Volume-weighted layer states and category thickness; None marks absent ice/snow."""
+    definitions = (("snow", "temperature_C", 5), ("ice", "temperature_C", layers),
+                   ("ice", "sice_ppt", layers), ("ice", "phi", layers))
+    result = []
+    for kind, field, count in definitions:
+        curves = []
+        for layer in range(1, count + 1):
+            values = []
+            for day in range(1, days + 1):
+                group = [profiles[(day, cell, cat)] for cat in range(1, 6)
+                         if (category is None or cat == category) and (day, cell, cat) in profiles]
+                weight = "snow_volume" if kind == "snow" else "ice_volume"
+                total = sum(profile[weight] for profile in group)
+                values.append(sum(profile[kind][layer][field] * profile[weight] for profile in group) / total
+                              if total > 0 else None)
+            curves.append(values)
+        result.append(curves)
+    for field in ("ice_volume", "snow_volume"):
+        curves = []
+        for cat in ((category,) if category is not None else range(1, 6)):
+            curves.append([profiles[(day, cell, cat)][field] / profiles[(day, cell, cat)]["area"]
+                           if (day, cell, cat) in profiles and profiles[(day, cell, cat)][field] > 0 else None
+                           for day in range(1, days + 1)])
+        result.append(curves)
+    return result
+
+
+def t13_plot(path: Path, left: list, right: list, title: str, days: int = 730,
+             category: int | None = None) -> None:
+    """Draw paired daily profiles without connecting gaps in inactive categories."""
+    labels = ("Snow temperature (C)", "Ice temperature (C)", "Ice salinity (ppt)",
+              "Liquid volume fraction", "Category ice thickness (m)", "Category snow thickness (m)")
+    colors = ("#332288", "#3366aa", "#0088aa", "#22aa77", "#77aa33",
+              "#ccaa00", "#dd7744", "#bb3344", "#882255", "#663366")
+    def layer_color(index: int, count: int) -> str:
+        rgb = colorsys.hls_to_rgb(0.75 * (1 - index / max(1, count - 1)), 0.38, 0.8)
+        return "#" + "".join(f"{round(channel * 255):02x}" for channel in rgb)
+
+    elements = ['<svg xmlns="http://www.w3.org/2000/svg" width="1400" height="1800" viewBox="0 0 1400 1800">',
+                '<rect width="1400" height="1800" fill="white"/>',
+                f'<text x="700" y="30" text-anchor="middle" font-size="22">{html.escape(title)}</text>',
+                '<text x="375" y="60" text-anchor="middle" font-size="20">Zero-salinity option OFF</text>',
+                '<text x="1015" y="60" text-anchor="middle" font-size="20">Zero-salinity option ON</text>']
+    for row, label in enumerate(labels):
+        ytop, height = 100 + row * 270, 210
+        samples = [v for panel in (left[row], right[row]) for curve in panel for v in curve if v is not None]
+        low, high = (min(samples), max(samples)) if samples else (0.0, 1.0)
+        margin = max((high - low) * 0.05, 1e-8)
+        low, high = low - margin, high + margin
+        if row >= 2 and samples and min(samples) >= 0:
+            low = 0.0
+        count = len(left[row])
+        for index in range(count):
+            number = (category if category is not None else index + 1) if row >= 4 else index + 1
+            color = colors[(number - 1) % len(colors)] if row >= 4 else layer_color(index, count)
+            y = ytop + index * height / max(1, count)
+            elements.append(f'<rect x="1310" y="{y:.1f}" width="14" height="{height / max(1, count):.1f}" fill="{color}"/>')
+            elements.append(f'<text x="1330" y="{y + height / max(1, count) * 0.8:.1f}" font-size="12">{number}</text>')
+        for column, panel in enumerate((left[row], right[row])):
+            x0, width = 115 + column * 640, 520
+            elements.append(f'<path d="M{x0} {ytop} V{ytop + height} H{x0 + width}" fill="none" stroke="black"/>')
+            for fraction in (0, 0.5, 1):
+                y = ytop + height * (1 - fraction)
+                elements.append(f'<text x="{x0 - 8}" y="{y + 5:.1f}" text-anchor="end" font-size="14">{low + fraction * (high - low):.3g}</text>')
+                elements.append(f'<path d="M{x0} {y:.1f} H{x0 + width}" stroke="#dddddd"/>')
+            for index, values in enumerate(panel):
+                color = (colors[((category - 1) if category is not None else index) % len(colors)]
+                         if row >= 4 else layer_color(index, len(panel)))
+                segments, points = [], []
+                for day, value in enumerate(values, 1):
+                    if value is None:
+                        if points:
+                            segments.append(points)
+                            points = []
+                        continue
+                    x = x0 + (day - 1) / max(1, days - 1) * width
+                    y = ytop + height * (high - value) / (high - low)
+                    points.append(f"{x:.2f},{y:.2f}")
+                if points:
+                    segments.append(points)
+                for segment in segments:
+                    if len(segment) == 1:
+                        x, y = segment[0].split(",")
+                        elements.append(f'<circle cx="{x}" cy="{y}" r="1.5" fill="{color}"/>')
+                    else:
+                        elements.append(f'<polyline points="{" ".join(segment)}" fill="none" stroke="{color}" stroke-width="1.4"/>')
+            if not any(value is not None for curve in panel for value in curve):
+                elements.append(f'<text x="{x0 + width/2}" y="{ytop + height/2}" text-anchor="middle" font-size="16">No active samples</text>')
+            for day in (1, 183, 365, 548, 730):
+                if day <= days:
+                    x = x0 + (day - 1) / max(1, days - 1) * width
+                    elements.append(f'<text x="{x:.1f}" y="{ytop + height + 20}" text-anchor="middle" font-size="14">{day}</text>')
+            elements.append(f'<text x="{x0 + width/2}" y="{ytop + height + 40}" text-anchor="middle" font-size="15">Elapsed day</text>')
+        elements.append(f'<text x="20" y="{ytop + height/2}" transform="rotate(-90 20 {ytop + height/2})" text-anchor="middle" font-size="16">{html.escape(label)}</text>')
+    elements.append('<text x="700" y="1760" text-anchor="middle" font-size="16">Layer colors progress from purple (top, 1) to red (bottom); thickness colors identify categories 1-5.</text>')
+    elements.append('<text x="700" y="1785" text-anchor="middle" font-size="16">Gaps indicate inactive ice or absent snow; category-mean states are volume weighted.</text>')
+    elements.append("</svg>")
+    path.write_text("\n".join(elements) + "\n", encoding="utf-8")
+
+
+def t13_layer_comparisons(runs: dict, output: Path, days: int = 730) -> list[Path]:
+    folder = output / "T13-layers"
+    folder.mkdir()
+    figures, summaries = [], []
+    for layers in (7, 20):
+        for forcing in ("control", "zero-sss"):
+            off, on = (t13_profiles(runs[forcing, layers, mode], layers, days) for mode in ("off", "on"))
+            for cell, category, view in [(2, None, "slab"), (3, None, "itd-mean"),
+                                         *[(3, cat, f"itd-cat{cat}") for cat in range(1, 6)]]:
+                if category is not None and not any(key[1:] == (cell, category) for key in off.keys() | on.keys()):
+                    raise ValueError(f"missing T13 category {category}: {forcing}, {layers}")
+                name = f"T13-{forcing}-{layers}-{view}.svg"
+                t13_plot(folder / name, t13_series(off, cell, category, layers, days),
+                         t13_series(on, cell, category, layers, days),
+                         f"T13 {forcing}, {layers} ice layers, {view}", days, category)
+                figures.append(folder / name)
+            for field in ("temperature_C", "sice_ppt", "phi"):
+                differences = [abs(off[key]["ice"][layer][field] - on[key]["ice"][layer][field])
+                               for key in off.keys() & on.keys() for layer in range(1, layers + 1)]
+                if not differences:
+                    raise ValueError(f"no common active T13 layer samples: {forcing}, {layers}")
+                summaries.append({"forcing": forcing, "layers": layers, "field": field,
+                                  "common_samples": len(differences), "max_abs_off_on": max(differences)})
+    write_csv(folder / "summary.csv", summaries)
+    return figures
+
+
 def budget_checks(run: Path) -> list[dict[str, object]]:
     water, salt = [], []
     for row in csv_rows(run / "mushy_columns.csv"):
@@ -1129,20 +1296,20 @@ def forcing_pair(runner: Runner, key: str) -> tuple[Path, Path, Path]:
     return atmosphere, control, treatment
 
 
-def compare_t14(coarse: Path, fine: Path) -> list[dict[str, object]]:
+def compare_t12(coarse: Path, fine: Path) -> list[dict[str, object]]:
     a = {(row["step"], row["cell"]): row for row in csv_rows(coarse / "mushy_columns.csv")
          if row["cell"] in (2, 3)}
     b = {(row["step"], row["cell"]): row for row in csv_rows(fine / "mushy_columns.csv")
          if row["cell"] in (2, 3)}
     if set(a) != set(b) or len(a) != 2 * 35040:
-        raise ValueError("T14 requires matching complete two-year per-step series")
+        raise ValueError("T12 requires matching complete two-year per-step series")
     metrics = []
     for cell in (2, 3):
         keys = [key for key in a if key[1] == cell]
         active = [key for key in keys if a[key]["aice_final_fraction"] > 1e-8 and
                   b[key]["aice_final_fraction"] > 1e-8]
         if not active:
-            raise ValueError("T14 has no common ice-covered timesteps")
+            raise ValueError("T12 has no common ice-covered timesteps")
         temp = max(abs(a[key]["surface_temperature_C"] - b[key]["surface_temperature_C"]) for key in active)
         delta = sum(abs(a[key]["salt_ocean_kg_m2_s"] - b[key]["salt_ocean_kg_m2_s"])
                     * b[key]["dt_s"] for key in keys)
@@ -1358,17 +1525,17 @@ def extended_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], li
             evidence.append(folder)
         note = ("365-day segmented synthetic seasonal experiment. Cost includes four-cell debug startup "
                 "and daily diagnostic/restart I/O, not production throughput or a performance threshold.")
-    elif key in ("T13", "T14", "T15"):
+    elif key in ("T11", "T12", "T13"):
         atmosphere, control, treatment = forcing_pair(runner, key)
         evidence.append(control.parent)
-        counts = (7, 10, 14, 20, 28) if key == "T14" else (7, 20)
+        counts = (7, 10, 14, 20, 28) if key == "T12" else (7, 20)
         runs: dict[tuple[str, int, str], Path] = {}
         for layers in counts:
-            saltmax, error = calibrated_salinity(layers) if key == "T14" else (3.2, 0.0)
-            if key == "T14":
+            saltmax, error = calibrated_salinity(layers) if key == "T12" else (3.2, 0.0)
+            if key == "T12":
                 metrics.append(check("initial mean salinity calibration (ppt)", error, 1e-10))
             for label, ocean in (("control", control), ("zero-sss", treatment)):
-                for mode in (("off", "on") if key == "T15" else ("on",)):
+                for mode in (("off", "on") if key == "T13" else ("on",)):
                     values = {**PINNED, "saltmax": repr(saltmax),
                               "mushy_zero_salinity": ".false." if mode == "off" else ".true."}
                     run = runner.model(f"{key}-{label}-{layers}-{mode}", values, layers,
@@ -1376,31 +1543,38 @@ def extended_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], li
                     runs[label, layers, mode] = run
                     evidence.append(run)
                     metrics += layer_checks(run)
-        if key == "T14":
+        if key == "T13":
+            t13_layer_comparisons(runs, runner.output)
+            evidence.append(runner.output / "T13-layers")
+        if key == "T12":
             adjacent_pass = []
             pair_rows = []
             for lower, upper in zip(counts, counts[1:]):
                 paired = []
                 for label in ("control", "zero-sss"):
-                    case_metrics = compare_t14(runs[label, lower, "on"], runs[label, upper, "on"])
+                    case_metrics = compare_t12(runs[label, lower, "on"], runs[label, upper, "on"])
                     paired += case_metrics
                     pair_rows += [{"coarse_layers": lower, "fine_layers": upper, "case": label, **metric}
                                   for metric in case_metrics]
                 adjacent_pass.append(all(row["passed"] for row in paired))
                 # Preserve the individual pair measurements without requiring
                 # all coarse pairs to pass the successive-pair acceptance rule.
-                write_json(control.parent / f"T14-pair-{lower}-{upper}.json", paired)
+                write_json(control.parent / f"T12-pair-{lower}-{upper}.json", paired)
             write_csv(control.parent / "summary.csv", pair_rows)
             metrics.append(check("two successive adjacent refinement pairs",
                            float(not any(a and b for a, b in zip(adjacent_pass, adjacent_pass[1:])))))
         note = ("Two repeated 365-day prescribed-forcing years, not a hindcast. Six smooth salinity "
                 "notches attain exact zero; non-salinity ocean input fields are unchanged. "
-                "T14 requires both metrics, both control/treatment cases and both target cells "
+                "T12 requires both metrics, both control/treatment cases and both target cells "
                 "on two successive adjacent refinement pairs; tolerances remain 0.1 C and 2% relative "
                 "salt-flux L1 (1e-6 kg/m2 absolute below the 1e-6 reference-integral floor).")
+        if key == "T13":
+            note += (" Daily paired layer plots compare both flags at 7 and 20 ice layers, "
+                     "for control and zero-SSS forcing, the slab and full-ITD cells, and "
+                     "each full-ITD category. Missing ice or snow is shown as a gap.")
     else:
         raise ValueError(f"unknown extended case: {key}")
-    if key in ("T13", "T15"):
+    if key in ("T11", "T13"):
         folder = runner.output / f"{key}-summary"
         folder.mkdir()
         rows = []
@@ -1459,7 +1633,41 @@ def line_plot(path: Path, series: list[tuple[str, list[tuple[float, float]]]],
     path.write_text("\n".join(elements) + "\n")
 
 
+def annual_plot_series(evidence: list[Path]) -> list[tuple[str, list[tuple[float, float]]]]:
+    series: dict[str, list[tuple[float, float]]] = {"off": [], "on": []}
+    for run in evidence:
+        match = re.fullmatch(r"T10-annual-(True|False)-([1-4])", run.name)
+        if not match:
+            continue
+        mode = "on" if match.group(1) == "True" else "off"
+        segment = int(match.group(2)) - 1
+        offset = sum(days for _, days in SEASONS[:segment])
+        rows = csv_rows(run / "mushy_columns.csv")
+        series[mode].extend((offset + row["step"] * row["dt_s"] / 86400,
+                             row["ice_volume_m"]) for row in rows if row["cell"] == 2)
+    if any(not points for points in series.values()):
+        raise ValueError("annual plot is missing flag-off or flag-on evidence")
+    return [(f"flag {mode}", sorted(points)) for mode, points in series.items()]
+
+
 def graph_case(output: Path, key: str, evidence: list[Path]) -> str | None:
+    if key == "T10-BGC":
+        log = (evidence[0] / "harness.log").read_text()
+        markers = ("BGC_ZERO_OK", "BGC_TINY_OK", "BGC_GUARD_OK")
+        elements = ['<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300" viewBox="0 0 900 300">',
+                    '<rect width="900" height="300" fill="white"/>',
+                    '<text x="30" y="35" font-size="20">BGC initializer and guard evidence</text>']
+        for index, marker in enumerate(markers):
+            found = marker in log
+            color = "#238b45" if found else "#b2182b"
+            label = "marker present" if found else "marker missing"
+            y = 90 + index * 65
+            elements += [f'<circle cx="45" cy="{y}" r="8" fill="{color}"/>',
+                         f'<text x="70" y="{y + 6}" font-size="18">{marker}: {label}</text>']
+        elements.append("</svg>")
+        name = f"{key}.svg"
+        (output / name).write_text("\n".join(elements) + "\n")
+        return name
     series = []
     xlabel, ylabel = "step", "Ice volume per cell area (m)"
     for run in evidence:
@@ -1499,7 +1707,7 @@ def graph_case(output: Path, key: str, evidence: list[Path]) -> str | None:
         series = [(run.name, [(row["sss"], row["temperature"]) for row in csv_rows(run / "frazil.csv")])
                   for run in evidence if (run / "frazil.csv").is_file()]
         xlabel, ylabel = "Ocean salinity (ppt)", "New frazil temperature (C)"
-    if key in ("T5", "T14"):
+    if key in ("T5", "T12"):
         table = next(run / "summary.csv" for run in evidence if (run / "summary.csv").is_file())
         with table.open(newline="") as stream:
             rows = list(csv.DictReader(stream))
@@ -1510,11 +1718,9 @@ def graph_case(output: Path, key: str, evidence: list[Path]) -> str | None:
                 for row in rows if row["fine_layers"] == str(upper) and field in row["name"]))
                 for upper in ((7, 10, 14, 20, 28) if key == "T5" else (10, 14, 20, 28))]))
         xlabel, ylabel = "Finer ice-layer count", "Worst error / predeclared limit"
-    if key in ("T10", "T10-cost"):
-        merged: dict[str, list[tuple[float, float]]] = {}
-        for label, values in series:
-            merged.setdefault(re.sub(r"-[1-4]$", "", label), []).extend(values)
-        series = [(label, sorted(values)) for label, values in merged.items()]
+    if key == "T10":
+        series = annual_plot_series(evidence)
+        xlabel, ylabel = "Elapsed model time (days)", "Slab ice volume per cell area (m)"
     if key == "T10-cost":
         table = next(run / "summary.csv" for run in evidence if (run / "summary.csv").is_file())
         with table.open(newline="") as stream:
@@ -1533,7 +1739,9 @@ def graph_case(output: Path, key: str, evidence: list[Path]) -> str | None:
 
 def validate_results(output: Path) -> dict:
     manifest = json.loads((output / "manifest.json").read_text())
-    if manifest.get("schema") != 1 or manifest.get("status") != "completed":
+    if manifest.get("schema") == 1:
+        raise ValueError("legacy result schema uses old test numbering; use the original runner to validate or report it")
+    if manifest.get("schema") not in (2, RESULT_SCHEMA) or manifest.get("status") != "completed":
         raise ValueError("results are incomplete or have an unsupported schema")
     if "results.json" not in manifest["files"]:
         raise ValueError("results.json is not included in the evidence manifest")
@@ -1548,7 +1756,7 @@ def validate_results(output: Path) -> dict:
         raise ValueError("invalid result selection")
     counts = {"T1": 1, "T2": 4, "T3": 4, "T4": 2, "T5": 19, "T6": 2, "T7": 1,
               "T8": 6, "T9": 1, "T10-brine": 6, "T10-BGC": 1, "T10": 31,
-              "T10-cost": 17, "T13": 6, "T14": 11, "T15": 10}
+              "T10-cost": 17, "T11": 6, "T12": 11, "T13": 11 if manifest["schema"] >= 3 else 10}
     for record in records:
         if record["kind"] != CASES[record["case"]].kind or not record["metrics"]:
             raise ValueError("missing metrics or incorrect scientific classification")
@@ -1567,11 +1775,17 @@ def validate_results(output: Path) -> dict:
                 raise ValueError(f"missing/invalid evidence directory: {name}")
             if name == "T1-binary":
                 required = ("binary.csv", "exact.csv")
+            elif name == "T13-layers" and manifest["schema"] >= 3:
+                required = ("summary.csv",) + tuple(
+                    f"T13-{forcing}-{layers}-{view}.svg"
+                    for layers in (7, 20) for forcing in ("control", "zero-sss")
+                    for view in ("slab", "itd-mean", "itd-cat1", "itd-cat2",
+                                 "itd-cat3", "itd-cat4", "itd-cat5"))
             elif name.endswith("-summary"):
                 required = ("summary.csv",)
             elif name.endswith("-forcing"):
                 required = ("control.txt", "zero-sss.txt", "provenance.json")
-                if record["case"] == "T14":
+                if record["case"] == "T12":
                     required += ("summary.csv",)
             elif name.startswith("T2-phase-cap-") or name == "T10-brine-constants":
                 required = ("harness.log", "constants.csv", "phase.csv", "frazil.csv")
@@ -1587,6 +1801,9 @@ def validate_results(output: Path) -> dict:
                 required = ("run.log", "icepack_in", "timing.json")
                 if name not in ("T2-reference", "T3-without-diagnostics"):
                     required += ("mushy_columns.csv", "mushy_layers.csv")
+                if record["case"] == "T13" and manifest["schema"] >= 3:
+                    required += ("mushy_snow.csv",)
+                    t13_profiles(run, 7 if "-7-" in name else 20)
                 if not any(path.is_file() and str(path.relative_to(output.resolve())) in manifest["files"]
                            for path in (run / "restart").glob("iced.*")):
                     raise ValueError(f"missing/unlisted restart evidence: {name}")
@@ -1610,7 +1827,7 @@ def report(output: Path) -> None:
     records = json.loads((output / "results.json").read_text())
     lines = ["# Mushy-layer scientific tests", "",
              "Execution, scientific acceptance, and descriptive results are separate.",
-             "T11/T12 are not performed or counted as coverage. T5/T14 retain their fixed convergence criteria.",
+             "T5/T12 retain their fixed convergence criteria.",
              "Heat residuals cover local thermodynamics, not full coupled/pond energy or salt closure.", "",
              "| Test | Scope | Execution | Scientific result |",
              "| --- | --- | --- | --- |"]
@@ -1635,6 +1852,18 @@ def report(output: Path) -> None:
                 lines += ["| " + " | ".join(record) + " |" for record in values[1:]]
         if row["figure"]:
             lines += ["", f"![{row['case']} measured results]({row['figure']})"]
+        if row["case"] == "T13" and "T13-layers" in row["evidence"]:
+            lines += ["", "### Layer-by-layer flag comparisons", "",
+                      "Daily profiles show both flags on common axes; inactive ice and absent snow are gaps.",
+                      "The full-ITD mean is weighted by category ice/snow volume. "
+                      "Individual category and slab plots are provided separately.", ""]
+            for layers in (7, 20):
+                for forcing in ("control", "zero-sss"):
+                    prefix = f"T13-layers/T13-{forcing}-{layers}"
+                    lines.append(f"- {forcing}, {layers} ice layers: " +
+                                 ", ".join(f"[{view}]({prefix}-{view}.svg)" for view in
+                                           ("slab", "itd-mean", "itd-cat1", "itd-cat2",
+                                            "itd-cat3", "itd-cat4", "itd-cat5")))
         lines += ["", "Raw evidence: " + ", ".join(f"[{name}/]({name}/)" for name in row["evidence"])]
     lines += ["", "## Input attribution", ""]
     manifest = json.loads((output / "manifest.json").read_text())
@@ -1695,7 +1924,7 @@ def run_tests(args: argparse.Namespace) -> int:
             for path in case.glob(pattern):
                 files[str(path.relative_to(args.output))] = sha256(path)
     write_json(args.output / "manifest.json", {
-        "schema": 1, "status": "completed", "selection": keys, "files": files,
+        "schema": RESULT_SCHEMA, "status": "completed", "selection": keys, "files": files,
         "source_sha256": before, "datasets": needed, "baseline_ref": args.baseline_ref,
         "baseline_commit": ((args.output / "reference-source" / ".git" / "HEAD").read_text().strip()
                             if "T2" in keys else None),
@@ -1830,7 +2059,7 @@ def self_test() -> int:
                 write_json(root / "results.json", records)
                 files = {str(path.relative_to(root)): sha256(path)
                          for path in (root / "results.json", run / "binary.csv", run / "exact.csv")}
-                manifest = {"schema": 1, "status": "completed", "selection": ["T1"], "files": files}
+                manifest = {"schema": RESULT_SCHEMA, "status": "completed", "selection": ["T1"], "files": files}
                 write_json(root / "manifest.json", manifest)
                 validate_results(root)
                 del files["T1-binary/binary.csv"]
@@ -1854,10 +2083,72 @@ def self_test() -> int:
                     for layers in (7, 20) for mode in ("off", "on")])
                 self.assertEqual(graph_case(root, "T10-cost", [run, totals]), "T10-cost.svg")
                 self.assertIn("365-day model time", (root / "T10-cost.svg").read_text())
+                (run / "harness.log").write_text("BGC_ZERO_OK\nBGC_TINY_OK\n")
+                self.assertEqual(graph_case(root, "T10-BGC", [run]), "T10-BGC.svg")
+                graph = (root / "T10-BGC.svg").read_text()
+                self.assertIn("BGC_TINY_OK: marker present", graph)
+                self.assertIn("BGC_GUARD_OK: marker missing", graph)
+
+        def test_annual_plot_uses_season_offsets(self):
+            with tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                runs = []
+                for enabled in ("False", "True"):
+                    for segment in (2, 1):
+                        run = root / f"T10-annual-{enabled}-{segment}"
+                        run.mkdir()
+                        write_csv(run / "mushy_columns.csv", [
+                            {"step": 24, "dt_s": 3600, "cell": 2,
+                             "ice_volume_m": segment}])
+                        runs.append(run)
+                series = dict(annual_plot_series(runs))
+                self.assertEqual(series["flag off"], [(1.0, 1.0), (91.0, 2.0)])
+                self.assertEqual(series["flag on"], [(1.0, 1.0), (91.0, 2.0)])
+                self.assertEqual(graph_case(root, "T10", runs), "T10.svg")
+                self.assertIn("Elapsed model time (days)", (root / "T10.svg").read_text())
+
+        def test_t13_profiles_weight_categories_and_preserve_gaps(self):
+            with tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                ice, snow = [], []
+                for day, category, volume in ((1, 1, 1), (1, 2, 3), (3, 1, 1)):
+                    for cell in (2, 3):
+                        for layer in (1, 2):
+                            ice.append({"step": 48 * day, "cell": cell, "category": category,
+                                        "layer": layer, "aicen_fraction": 0.5, "vicen_m": volume,
+                                        "vsnon_m": volume if day == 1 else 0,
+                                        "temperature_C": 10 * category + layer,
+                                        "sice_ppt": category, "phi": 0.1 * category})
+                        for layer in range(1, 6):
+                            snow.append({"step": 48 * day, "cell": cell, "category": category,
+                                         "layer": layer, "temperature_C": 10 * category + layer})
+                write_csv(root / "mushy_layers.csv", ice)
+                write_csv(root / "mushy_snow.csv", snow)
+                profiles = t13_profiles(root, 2, days=3)
+                series = t13_series(profiles, 3, None, 2, days=3)
+                self.assertEqual(series[1][0], [18.5, None, 11.0])
+                self.assertEqual(series[0][0], [18.5, None, None])
+                self.assertEqual(series[4][1], [6.0, None, None])
+                t13_plot(root / "comparison.svg", series, series, "example", days=3)
+                self.assertIn("<circle ", (root / "comparison.svg").read_text())
+                write_csv(root / "mushy_layers.csv", ice[:-1])
+                with self.assertRaisesRegex(ValueError, "incomplete T13 layer"):
+                    t13_profiles(root, 2, days=3)
+
+        def test_renumbering_and_legacy_results(self):
+            self.assertEqual(selected("T11,T12,T13", "core"), ["T11", "T12", "T13"])
+            self.assertEqual(CASES["T11"].kind, "descriptive")
+            self.assertEqual(CASES["T12"].kind, "convergence")
+            self.assertEqual(CASES["T13"].kind, "descriptive")
+            with tempfile.TemporaryDirectory() as folder:
+                root = Path(folder)
+                write_json(root / "manifest.json", {"schema": 1, "status": "completed"})
+                with self.assertRaisesRegex(ValueError, "old test numbering.*original runner"):
+                    validate_results(root)
 
         def test_inputs_and_metrics_fail_explicitly(self):
             with self.assertRaises(ValueError):
-                selected("T1,T11", "core")
+                selected("T1,T14", "core")
             with self.assertRaises(ValueError):
                 namelist("npt=1\nnpt=2\n", {"npt": "3"})
             with self.assertRaises(ValueError):
@@ -1893,7 +2184,6 @@ def main(argv: list[str] | None = None) -> int:
         if args.action == "list":
             for key, case in CASES.items():
                 print(f"{key:12} {'core' if case.core else 'extended':8} {case.kind:12} {case.title}")
-            print("T11/T12: not performed")
         elif args.action == "self-test":
             return self_test()
         elif args.action == "fetch-data":

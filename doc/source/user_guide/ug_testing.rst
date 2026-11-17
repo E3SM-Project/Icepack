@@ -653,13 +653,19 @@ Success means the checked evidence is consistent, not that every scientific
 criterion passed.  Read the separate scientific verdicts in the report.
 Reproduction from a different checkout/compiler must be a new run, not relabelled
 historical evidence.
+Results produced before the test renumbering use a legacy manifest schema;
+validate or report those results with their original version of the runner.
+The former T13, T14 and T15 cases are now T11, T12 and T13 respectively;
+in particular, selecting T13 now runs the flag off/on sensitivity study.
+Existing same-numbered schema-2 results remain readable, but only newly run
+schema-3 T13 results include the layer-evolution comparisons described below.
 
 Input preparation and offline execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Missing inputs needed by the selected tests are fetched automatically, pinned
 to exact SHA-256 values in the script.  Synthetic core tests need no downloads.
-Only T9 needs the observation table; T13--T15 need the sample forcing archive.
+Only T9 needs the observation table; T11--T13 need the sample forcing archive.
 To prepare a compute node before disconnecting::
 
   python3 configuration/scripts/tests/test_mushy_layer.py fetch-data --suite extended \
@@ -731,18 +737,29 @@ Scientific coverage and limits
      - A 365-day flag off/on pair plus eleven paired one-day namelist families.
    * - T10-cost
      - 7/20 ice layers, five snow layers, four-cell debug and I/O-included timing.
-   * - T13
+   * - T11
      - Two-year prescribed control/salinity-notch sensitivity at 7/20 ice layers.
-   * - T14
+   * - T12
      - The same forcing at 7/10/14/20/28 layers with fixed refinement criteria.
-   * - T15
+   * - T13
      - Flag off/on prescribed-forcing sensitivity at 7/20 ice layers.
 
-T11/T12 are unperformed and are not counted as coverage.  The pinned extended
-settings are an example of a current Icepack configuration used in Earth system
-models, not a coupled-model validation.  T13--T15 repeat a 365-day forcing year
-twice and introduce six Gaussian salinity notches with exact-zero daily
+The pinned extended settings are an example of a current Icepack configuration
+used in Earth system models, not a coupled-model validation.  T11--T13 repeat a
+365-day forcing year twice and introduce six Gaussian salinity notches with exact-zero daily
 centres; other numerical ocean fields remain unchanged.
+
+T13 runs both forcing treatments with the zero-salinity option off and on,
+at 7 and 20 ice layers.  Its ``T13-layers`` output compares the daily evolution
+of all ice-layer temperatures, salinities and liquid fractions, all five
+snow-layer temperatures, and ice and snow thicknesses.  For each forcing and
+resolution there are plots for the slab cell, the full thickness-distribution
+cell's volume-weighted mean, and each of its five categories.  Ice and snow
+states are weighted by their respective category volumes; inactive categories
+and absent snow appear as gaps rather than zero-valued states.  The summary
+reports maximum off/on differences only where both runs have samples.  These
+are descriptive comparisons, not equivalence or observational acceptance
+criteria.
 
 The integrated T1 grid does not independently assert all small-salinity
 asymptotic and branch-boundary continuity checks represented in the archived
@@ -751,7 +768,7 @@ on code outside the Icepack repository.
 
 T5 compares 10 versus 14 layers on a common 101-point depth grid with fixed
 limits of 0.1 C, 0.01 liquid fraction, 0.05 ppt and 2 percent basal growth.
-T14 requires both temperature and net-salt-flux criteria for both cases and
+T12 requires both temperature and net-salt-flux criteria for both cases and
 target cells on two successive adjacent refinement pairs.  Limits are 0.1 C
 and 2 percent relative L1 salt flux, with an absolute 1e-6 kg/m2 tolerance
 when the fine-grid reference integral is at most 1e-6 kg/m2.  Failure is reported
