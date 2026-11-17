@@ -293,10 +293,13 @@ contains
 !autodocument_start icepack_mushy_frazil_state
 ! Native frazil state from ocean salinity and the configured liquidus-temperature
 ! cap. Initialize parameters through icepack_intfc before calling.
-     subroutine icepack_mushy_frazil_state(sss, zSin, zTin, zqin)
+     subroutine icepack_mushy_frazil_state(sss, zSin, zTin, zqin, dSin0_frazil_cell)
 
     real(kind=dbl_kind), intent(in) :: &
          sss      ! ocean salinity (ppt)
+
+    real(kind=dbl_kind), intent(in), optional :: &
+         dSin0_frazil_cell ! cell-specific salinity reduction (ppt); defaults to dSin0_frazil
 
     real(kind=dbl_kind), intent(out) :: &
          zSin     , & ! new frazil bulk salinity (ppt)
@@ -304,13 +307,16 @@ contains
          zqin         ! new frazil enthalpy (J m-3)
 !autodocument_end
 
-    real(kind=dbl_kind) :: Tliquidus
+    real(kind=dbl_kind) :: Tliquidus, dSin0_frazil_local
+
+    dSin0_frazil_local = dSin0_frazil
+    if (present(dSin0_frazil_cell)) dSin0_frazil_local = dSin0_frazil_cell
 
      ! Preserve the native frazil salinity law; the cap changes its thermal state.
-     if (sss > c2 * dSin0_frazil) then
-       zSin = sss - dSin0_frazil
+     if (sss > c2 * dSin0_frazil_local) then
+       zSin = sss - dSin0_frazil_local
     else
-       zSin = sss**2 / (c4 * dSin0_frazil)
+       zSin = sss**2 / (c4 * dSin0_frazil_local)
     endif
 
     Tliquidus = liquidus_temperature_mush(zSin / phi_init)

@@ -347,6 +347,8 @@ class Runner:
             changes.pop("mushy_diagnostics", None)
             changes.pop("mushy_diagfreq", None)
             changes.pop("mushy_profilefreq", None)
+            if not re.search(r"(?im)^\s*mushy_zero_salinity\s*=", template):
+                changes.pop("mushy_zero_salinity", None)
         (run / "icepack_in").write_text(namelist(template, changes))
         shutil.copy2(executable, run / "icepack")
         # Source the *real* machine environment rather than guessing FC/library
@@ -403,6 +405,7 @@ program phase_client
  real(dbl_kind) :: rhoi, rhow, lf, ci, cw, delta, cap, initphi
  real(dbl_kind) :: q, t, phi, off_t, off_phi, s, new_s, new_t, new_q, melt_t
  real(dbl_kind) :: factors(18), state_salts(18), salts(53)
+ real(dbl_kind) :: cell_salts(3), expected_cell_salts(3)
  logical :: default_flag
  call icepack_configure()
  call check_warnings()
@@ -460,6 +463,19 @@ program phase_client
    write(u,'(*(g0,:,","))') s,new_s,new_t,new_q,phi,melt_t
  enddo
  close(u)
+ cell_salts=[0.d0,delta/2.d0,4.d0*delta]
+ expected_cell_salts=[0.d0,delta/8.d0,3.5d0*delta]
+ do i=0,1
+   call icepack_init_parameters(mushy_zero_salinity_in=(i==1))
+   call check_warnings()
+   do j=1,size(cell_salts)
+     call icepack_mushy_frazil_state(sss=cell_salts(j),zSin=new_s,zTin=new_t,zqin=new_q, &
+          dSin0_frazil_cell=delta/2.d0)
+     call check_warnings()
+     if(abs(new_s-expected_cell_salts(j))>1.d-13) error stop 'cell frazil salinity override ignored'
+   enddo
+ enddo
+ write(*,*) 'CELL_FRAZIL_SALINITY_OK'
  contains
  subroutine check_warnings()
    call icepack_warnings_flush(6)
@@ -989,6 +1005,7 @@ def core_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], list[P
         metrics.append(check("default-off restart byte differences",
                              float(last_restart(regression[0]).read_bytes() != last_restart(regression[1]).read_bytes())))
         note = ("Eighteen compiled phase states and 53 ocean salinities under 0/-0.1 C caps. "
+                "Cell-specific frazil salinity reductions are checked with the option off and on. "
                 "A separate saline default-off restart is compared with the recorded baseline git ref.")
     elif key == "T3":
         full = runner.model("T3-full")

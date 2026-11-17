@@ -1483,7 +1483,7 @@
                vi0new = c0
             endif
          else
-            call icepack_mushy_frazil_state(sss, Si0new, Ti, qi0new)
+            call icepack_mushy_frazil_state(sss, Si0new, Ti, qi0new, dSin0_frazil_cell=dSin0_frazil)
          endif
          do k = 1, nilyr
             Sprofile(k) = Si0new

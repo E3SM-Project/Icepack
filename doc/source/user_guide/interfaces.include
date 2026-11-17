@@ -674,10 +674,13 @@ icepack_mushy_frazil_state
 
   ! Native frazil state from ocean salinity and the configured liquidus-temperature
   ! cap. Initialize parameters through icepack_intfc before calling.
-       subroutine icepack_mushy_frazil_state(sss, zSin, zTin, zqin)
+       subroutine icepack_mushy_frazil_state(sss, zSin, zTin, zqin, dSin0_frazil_cell)
 
       real(kind=dbl_kind), intent(in) :: &
            sss      ! ocean salinity (ppt)
+
+      real(kind=dbl_kind), intent(in), optional :: &
+           dSin0_frazil_cell ! cell-specific salinity reduction (ppt); defaults to dSin0_frazil
 
       real(kind=dbl_kind), intent(out) :: &
            zSin     , & ! new frazil bulk salinity (ppt)
