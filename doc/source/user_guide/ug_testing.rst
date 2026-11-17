@@ -634,6 +634,9 @@ Replace the example machine/environment with a supported local pair.
 restart with a separately built ``--baseline-ref`` (default ``HEAD``).  Use the
 pre-change commit explicitly when evaluating regression against earlier code.
 The exact detached reference commit and source hashes are recorded.
+References that predate the new namelist controls omit those controls and
+use their native saline initialization. The compiled frazil checks also
+exercise cell-specific salinity reductions with the option off and on.
 
 The tool writes ``TEST_RESULTS.md``, SVG figures, measured-value tables, raw
 CSV diagnostics/restarts, command/build logs, ``results.json`` and

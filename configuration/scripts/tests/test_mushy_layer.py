@@ -347,8 +347,11 @@ class Runner:
             changes.pop("mushy_diagnostics", None)
             changes.pop("mushy_diagfreq", None)
             changes.pop("mushy_profilefreq", None)
-            if not re.search(r"(?im)^\s*mushy_zero_salinity\s*=", template):
-                changes.pop("mushy_zero_salinity", None)
+            for name in ("mushy_zero_salinity", "saltmax"):
+                if not re.search(rf"(?im)^\s*{name}\s*=", template):
+                    if name == "saltmax" and changes[name] != "3.2":
+                        raise ValueError("reference without saltmax requires its native saline initialization")
+                    changes.pop(name, None)
         (run / "icepack_in").write_text(namelist(template, changes))
         shutil.copy2(executable, run / "icepack")
         # Source the *real* machine environment rather than guessing FC/library
@@ -1006,7 +1009,8 @@ def core_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], list[P
                              float(last_restart(regression[0]).read_bytes() != last_restart(regression[1]).read_bytes())))
         note = ("Eighteen compiled phase states and 53 ocean salinities under 0/-0.1 C caps. "
                 "Cell-specific frazil salinity reductions are checked with the option off and on. "
-                "A separate saline default-off restart is compared with the recorded baseline git ref.")
+                "A separate saline default-off restart is compared with the recorded baseline git ref; "
+                "references without a saltmax setting use their native saline initialization.")
     elif key == "T3":
         full = runner.model("T3-full")
         without_diagnostics = runner.model("T3-without-diagnostics", {"mushy_diagnostics": ".false."})
