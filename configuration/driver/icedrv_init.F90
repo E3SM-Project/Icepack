@@ -82,6 +82,7 @@
       use icedrv_forcing, only: atm_data_format, ocn_data_format, bgc_data_format
       use icedrv_forcing, only: data_dir
       use icedrv_forcing, only: oceanmixed_ice, restore_ocn, trestore
+      use icedrv_forcing, only: sst_at_freezing
       use icedrv_forcing, only: snw_ssp_table, lateral_flux_type
       use icedrv_forcing, only: precalc_forc
 
@@ -204,6 +205,7 @@
         ice_data_file,                                     &
         atm_data_format, ocn_data_format, bgc_data_format, &
         data_dir,        trestore,        restore_ocn,     &
+        sst_at_freezing,                                   &
         sss_fixed,       qdp_fixed,       hmix_fixed,      &
         precalc_forc,    semi_implicit_Tsfc,               &
         vapor_flux_correction
@@ -316,6 +318,7 @@
       precip_units    = 'mks'     ! 'mm_per_month' or
                                   ! 'mm_per_sec' = 'mks' = kg/m^2 s
       oceanmixed_ice  = .false.   ! if true, use internal ocean mixed layer
+      sst_at_freezing = .false.   ! prescribe sst at the current freezing point
       wave_spec_type  = 'none'    ! type of wave spectrum forcing
       wave_height_type= 'none'    ! type of wave height forcing
       ocn_data_format = 'bin'     ! file format ('bin'=binary or 'nc'=netcdf)
@@ -642,6 +645,11 @@
          call icedrv_system_abort(string='mushy_zero_salinity requires ktherm=2')
       endif
 
+      if (sst_at_freezing .and. (oceanmixed_ice .or. restore_ocn)) then
+         call icedrv_system_abort( &
+             string='sst_at_freezing requires oceanmixed_ice=F and restore_ocn=F')
+      endif
+
       if (ktherm == 1 .and. trim(tfrz_option) /= 'linear_salt') then
          write (nu_diag,*) &
          'WARNING: ktherm = 1 and tfrz_option = ',trim(tfrz_option)
@@ -872,6 +880,7 @@
          write(nu_diag,1005) ' hi_min                    = ', hi_min
          write(nu_diag,1030) ' fbot_xfer_type            = ', trim(fbot_xfer_type)
          write(nu_diag,1010) ' oceanmixed_ice            = ', oceanmixed_ice
+         write(nu_diag,1010) ' sst_at_freezing           = ', sst_at_freezing
          write(nu_diag,1030) ' congel_freeze             = ', trim(congel_freeze)
          write(nu_diag,1030) ' tfrz_option               = ', trim(tfrz_option)
          write(nu_diag,*)    ' saltflux_option           = ', &

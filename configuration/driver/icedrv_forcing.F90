@@ -99,6 +99,7 @@
       logical (kind=log_kind), public :: &
          oceanmixed_ice        , & ! if true, use internal ocean mixed layer
          restore_ocn           , & ! restore sst if true
+         sst_at_freezing       , & ! prescribe sst at the current ocean freezing point
          precalc_forc              ! whether to precalculate forcing
 
       real (kind=dbl_kind), public :: &
@@ -1658,6 +1659,7 @@
          hmix(i) = max(hmix(i), c0)
          Tf  (i) = icepack_sea_freezing_temperature(sss(i))
          if (restore_ocn) sst(i) = sst(i) + (sst_temp(i)-sst(i))*dt/trest
+         if (sst_at_freezing) sst(i) = Tf(i)
       enddo
       call icepack_warnings_flush(nu_diag)
       if (icepack_warnings_aborted()) call icedrv_system_abort(string=subname, &

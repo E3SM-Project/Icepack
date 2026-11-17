@@ -624,6 +624,9 @@ Standalone usage, from the checkout root::
   python3 configuration/scripts/tests/test_mushy_layer.py run \
     --machine conda --environment macos --tests T1,T7,T10-brine \
     --offline --output /new/selected-results
+  python3 configuration/scripts/tests/test_mushy_layer.py run \
+    --machine conda --environment macos --tests T14 \
+    --offline --output /new/paired-freshening-results
 
 Replace the example machine/environment with a supported local pair.
 ``--icepack-root`` selects another checkout.  ``--tests`` overrides the suite;
@@ -659,13 +662,19 @@ The former T13, T14 and T15 cases are now T11, T12 and T13 respectively;
 in particular, selecting T13 now runs the flag off/on sensitivity study.
 Existing same-numbered schema-2 results remain readable, but only newly run
 schema-3 T13 results include the layer-evolution comparisons described below.
+The newly added T14 is the paired salinity/freezing-point-SST companion;
+it is not the former, pre-renumbering T14 convergence case.
+Schema-4 T14 checks the prescribed ocean boundary only, at 7 and 20 layers.
+An earlier schema-3 T14 definition also graded layer refinement; keep those
+results with their original runner rather than relabelling their verdicts.
+The current validator explicitly rejects that earlier T14 definition.
 
 Input preparation and offline execution
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 Missing inputs needed by the selected tests are fetched automatically, pinned
 to exact SHA-256 values in the script.  Synthetic core tests need no downloads.
-Only T9 needs the observation table; T11--T13 need the sample forcing archive.
+Only T9 needs the observation table; T11--T14 need the sample forcing archive.
 To prepare a compute node before disconnecting::
 
   python3 configuration/scripts/tests/test_mushy_layer.py fetch-data --suite extended \
@@ -743,11 +752,44 @@ Scientific coverage and limits
      - The same forcing at 7/10/14/20/28 layers with fixed refinement criteria.
    * - T13
      - Flag off/on prescribed-forcing sensitivity at 7/20 ice layers.
+   * - T14
+     - Companion control/freshening experiments with actual SST following the
+       salinity-dependent freezing point, both flags, and 7/20 ice layers.
+       Layer refinement is not a T14 acceptance requirement.
 
 The pinned extended settings are an example of a current Icepack configuration
 used in Earth system models, not a coupled-model validation.  T11--T13 repeat a
 365-day forcing year twice and introduce six Gaussian salinity notches with exact-zero daily
 centres; other numerical ocean fields remain unchanged.
+Their actual SST stays at its initialized -1.8 C because both
+``oceanmixed_ice`` and ``restore_ocn`` are false. These salinity-only cases
+remain separate from the paired salinity/temperature experiment below.
+
+T14 repeats the same atmosphere and ocean salinity treatments, but enables
+the standalone ``sst_at_freezing`` control with ``tfrz_option='mushy'``.
+At each forcing update, actual SST is set to Icepack's freezing temperature
+at the interpolated SSS; it is not inferred from an unused SST input file or
+approximated by slow restoring. Control SST also follows its own freezing
+point, so the control is not identical to the fixed-temperature T11--T13
+control. Ocean mixed-layer evolution and restoring remain off. This is a
+prescribed boundary experiment, not a closed ocean heat-budget calculation.
+The zero-salinity physics option remains off by default; T14 explicitly runs
+both settings. As in T12, initial ice profiles preserve the seven-layer
+reference mean salinity at every resolution.
+
+Eight two-year integrations cross both ocean treatments, both flag settings,
+and two resolutions. Every timestep in both target cells must have actual
+SST within 1e-12 C of the calculated freezing temperature. Freshening cases
+must record exactly 12 samples per cell with zero SSS and exactly zero SST
+and freezing temperature; controls must have no zero-SSS samples.
+The ``T14-summary/summary.csv`` table records those event counts, actual
+SST ranges, maximum tracking error, final ice volume, and integrated salt flux.
+The ``T14-layers`` figures provide the same 28 daily layer comparisons as T13
+at 7 and 20 layers. These off/on comparisons have no equivalence threshold.
+T14 acceptance checks the actual boundary values and valid layer states,
+not agreement between resolutions. Layer-refinement convergence remains
+the responsibility of the separate convergence tests; it does not affect
+T14's verdict.
 
 T13 runs both forcing treatments with the zero-salinity option off and on,
 at 7 and 20 ice layers.  Its ``T13-layers`` output compares the daily evolution
@@ -816,7 +858,10 @@ Optional ``setup_nml`` variables ``mushy_diagnostics``, ``mushy_diagfreq`` and
 Positive sampling intervals select column samples and, additionally, ice/snow
 profiles and local energy samples.  Files are ``mushy_columns.csv``,
 ``mushy_layers.csv``, ``mushy_snow.csv`` and ``mushy_energy.csv``; headers include
-units.  The energy interface returns per-category timestep, initial/final/input
+units. Column records include actual ``sst_C`` and
+``freezing_temperature_C`` as well as ``sss_ppt``; these are used to verify
+the paired boundary at every sampled timestep.
+The energy interface returns per-category timestep, initial/final/input
 energy, signed residual and absolute residual rate.  No diagnostic I/O is added
 to column physics.  Test clients configure Icepack first, use public interfaces
 with keyword arguments, and flush/check warning/abort state after calls, following

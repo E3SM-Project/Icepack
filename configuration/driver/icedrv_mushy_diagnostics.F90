@@ -11,6 +11,7 @@
       use icedrv_flux, only: fresh, fresh_ai, fsalt_ai, fhocn_ai, fsnow, frain, evap, &
           frazil, frazil_diag, sss, fpond, l_mpond_fresh, dpnd_flush, dpnd_expon, &
           dpnd_freebd, dpnd_initial, dpnd_dlid, dpnd_melt, dpnd_ridge, congel, meltb
+      use icedrv_flux, only: sst, Tf
       use icepack_intfc, only: icepack_query_parameters, icepack_query_tracer_indices, &
           icepack_query_tracer_flags, icepack_mushy_state, icepack_snow_temperature, &
           icepack_warnings_flush, icepack_warnings_aborted
@@ -67,7 +68,8 @@
           'pond_initial_m,pond_final_m,aice_initial_fraction,aice_final_fraction,'// &
           'rhofresh_kg_m3,frazil_water_kg_m2,frazil_correction_salt_source_kg_m2,'// &
           'sss_ppt,new_frazil_salinity_ppt,fresh_before_kg_m2_s,fresh_after_kg_m2_s,'// &
-          'surface_temperature_C,basal_congelation_m,basal_melt_m,ice_volume_m'
+          'surface_temperature_C,basal_congelation_m,basal_melt_m,ice_volume_m,'// &
+          'sst_C,freezing_temperature_C'
       call check_io(status)
       open(newunit=layer_unit,file='mushy_layers.csv',status='replace',action='write',iostat=status)
       call check_io(status)
@@ -173,7 +175,7 @@
              dpnd_dlid(i),dpnd_melt(i),dpnd_ridge(i),initial(4,i),final(4,i), &
              initial(5,i),final(5,i),rhofresh,rhoi*(frazil(i)-frazil_diag(i)), &
              rhoi*(frazil(i)-frazil_diag(i))*new_salt*0.001_dbl_kind,sss(i),new_salt, &
-             fresh_before(i),fresh(i),trcr(i,nt_Tsfc),congel(i),meltb(i),vice(i)
+             fresh_before(i),fresh(i),trcr(i,nt_Tsfc),congel(i),meltb(i),vice(i),sst(i),Tf(i)
          call check_io(status)
          if (mod(istep,mushy_profilefreq) /= 0) cycle
          do n=1,ncat

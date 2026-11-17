@@ -336,6 +336,16 @@ initializer.  Its default is the configured Icepack default (25 in the supplied
 namelist).  Wave-free pinned scientific configurations can explicitly select
 zero without modifying driver source.
 
+For standalone prescribed-boundary experiments, ``sst_at_freezing=.true.``
+sets actual ocean SST to the freezing temperature calculated from the current,
+interpolated ocean salinity and ``tfrz_option`` at every forcing update.
+It overrides the initialized SST and does not use SST from the input file.
+Both ``oceanmixed_ice`` and ``restore_ocn`` must be false; conflicting settings
+abort rather than combining different temperature controls.
+With ``tfrz_option='mushy'``, zero ocean salinity gives zero SST.
+This imposed temperature is not an evolving ocean heat budget. The option
+defaults to false and does not change the ``mushy_zero_salinity`` default.
+
 .. csv-table:: **forcing_nml namelist options**
    :header: "variable", "options/format", "description", "default value"
    :widths: 15, 15, 30, 15 
@@ -404,6 +414,7 @@ zero without modifying driver source.
    "","``prognostic``","use actual sea ice bulk salinity in flux"
    "``semi-implicit_Tsfc``", "logical", "surface temperature coupling option based on d(hf)/dTs", "``.false.``"
    "``sss_fixed``", "real", "constant ocean mixed layer salinity in ppt", "34.0"
+   "``sst_at_freezing``", "logical", "prescribe SST at the current ocean freezing point; standalone driver only", "``.false.``"
    "``tfrz_option``","``constant``", "constant ocean freezing temperature (Tocnfrz)","``mushy``"
    "", "``linear_salt``", "linear function of salinity (ktherm=1)", ""
    "", "``minus1p8``", "constant ocean freezing temperature (:math:`-1.8^{\circ} C`)", ""

@@ -136,6 +136,7 @@
     ice_ref_salinity = 4.0
     saltflux_option = 'constant'
     oceanmixed_ice  = .true.
+    sst_at_freezing = .false.
     wave_spec_type  = 'none'
     nfreq          = 25
     wave_height_type= 'none'
