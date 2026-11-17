@@ -264,6 +264,7 @@
                                             ustar, tstar, qstar, &
                                             rd, rh, re, &
                                             hols, psixh, stable)
+         if (icepack_warnings_aborted(subname)) return
 
          ! next, check if computed scaling parameters are near zero. if so, this suggests that the
          ! system of equations has no solution and the stability limiter is necessary
@@ -275,6 +276,7 @@
                                                ustar, tstar, qstar, &
                                                rd, rh, re, &
                                                hols, psixh, stable)
+            if (icepack_warnings_aborted(subname)) return
          endif
       endif
 
@@ -458,15 +460,53 @@
             if (.not. (sqrt(((ustar_next - ustar_prev)/(abs(ustar_prev) + ustar_tiny))**2 + &
                            ((tstar_next - tstar_prev)/(abs(tstar_prev) + tstar_tiny))**2 + &
                            ((qstar_next - qstar_prev)/(abs(qstar_prev) + qstar_tiny))**2) > atmiter_conv)) exit
+            if (k > natmiter) then
+               write(warnstr,*) 'wind speed: ', vmag
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'air temp: ', potT
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'surface temp: ', TsfK
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'level height: ', zlvl
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'air humidity: ', Qa
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'surface humidity: ', ssq
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'ustar: ', ustar
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'tstar: ', tstar
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'qstar: ', qstar
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'ustar residual: ', &
+                  (ustar_next - ustar_prev)/(abs(ustar_prev) + ustar_tiny)
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'tstar residual: ', &
+                  (tstar_next - tstar_prev)/(abs(tstar_prev) + tstar_tiny)
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'qstar residual: ', &
+                  (qstar_next - qstar_prev)/(abs(qstar_prev) + qstar_tiny)
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'convergence tolerance: ', atmiter_conv
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'max iterations: ', natmiter
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'regularization enabled: ', use_ice_atm_flux_reg
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'regularization width: ', ice_atm_flux_eps
+               call icepack_warnings_add(warnstr)
+               write(warnstr,*) 'damping factor: ', ice_atm_flux_damping
+               call icepack_warnings_add(warnstr)
+               call icepack_warnings_add('atmo_boundary_layer: flux iteration did not converge')
+               call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+               exit
+            endif
          else
             ! When regularization is not active, only the residual for ustar is considered as
             ! has been done in E3SMv3 and prior.
             if (.not. (abs(ustar - ustar_prev)/ustar > atmiter_conv)) exit
-         endif
-
-         if (k > natmiter) then
-            call icepack_warnings_add('atmo_boundary_layer: flux iteration did not converge')
-            exit
+            if (k > natmiter) exit
          endif
          k = k + 1
          ustar_prev = ustar
