@@ -118,11 +118,15 @@
 
       ! Flux convergence tolerance
       real (kind=dbl_kind) :: atmiter_conv
+      
+      ! Ice-atmosphere flux regularization parameters
+      real (kind=dbl_kind) :: ice_atm_flux_eps, ice_atm_flux_damping
 
       ! Ice reference salinity for fluxes
       real (kind=dbl_kind) :: ice_ref_salinity
 
       logical (kind=log_kind) :: calc_Tsfc, formdrag, highfreq, calc_strair, calc_dragio
+      logical (kind=log_kind) :: use_ice_atm_flux_reg
       logical (kind=log_kind) :: conserv_check, semi_implicit_Tsfc, vapor_flux_correction
 
       integer (kind=int_kind) :: ntrcr
@@ -190,7 +194,8 @@
         update_ocn_f,    l_mpond_fresh,   ustar_min,       &
         fbot_xfer_type,  oceanmixed_ice,  emissivity,      &
         formdrag,        highfreq,        natmiter,        &
-        atmiter_conv,    calc_dragio,     congel_freeze,   &
+        atmiter_conv,    use_ice_atm_flux_reg,             &
+        ice_atm_flux_eps, ice_atm_flux_damping, calc_dragio,     congel_freeze,   &
         tfrz_option,     saltflux_option, ice_ref_salinity,&
         cpl_frazil,      default_season,                   &
         wave_spec_type,  wave_height_type,                 &
@@ -226,6 +231,9 @@
            albsnowv_out=albsnowv, albsnowi_out=albsnowi, hi_min_out=hi_min, &
            natmiter_out=natmiter, ahmax_out=ahmax, shortwave_out=shortwave, &
            atmiter_conv_out = atmiter_conv, calc_dragio_out=calc_dragio, &
+           use_ice_atm_flux_reg_out=use_ice_atm_flux_reg, &
+           ice_atm_flux_eps_out=ice_atm_flux_eps, &
+           ice_atm_flux_damping_out=ice_atm_flux_damping, &
            albedo_type_out=albedo_type, R_ice_out=R_ice, R_pnd_out=R_pnd, &
            R_snw_out=R_snw, dT_mlt_out=dT_mlt, rsnw_mlt_out=rsnw_mlt, &
            kstrength_out=kstrength, krdg_partic_out=krdg_partic, &
@@ -823,6 +831,9 @@
          write(nu_diag,1010) ' highfreq                  = ', highfreq
          write(nu_diag,1020) ' natmiter                  = ', natmiter
          write(nu_diag,1005) ' atmiter_conv              = ', atmiter_conv
+         write(nu_diag,1010) ' use_ice_atm_flux_reg      = ', use_ice_atm_flux_reg
+         write(nu_diag,1005) ' ice_atm_flux_eps          = ', ice_atm_flux_eps
+         write(nu_diag,1005) ' ice_atm_flux_damping      = ', ice_atm_flux_damping
          write(nu_diag,1010) ' calc_strair               = ', calc_strair
          write(nu_diag,1010) ' calc_Tsfc                 = ', calc_Tsfc
          write(nu_diag,1010) ' calc_dragio               = ', calc_dragio
@@ -1029,6 +1040,9 @@
            albsnowv_in=albsnowv, albsnowi_in=albsnowi, hi_min_in=hi_min, &
            natmiter_in=natmiter, ahmax_in=ahmax, shortwave_in=shortwave, &
            atmiter_conv_in = atmiter_conv, calc_dragio_in=calc_dragio, &
+           use_ice_atm_flux_reg_in=use_ice_atm_flux_reg, &
+           ice_atm_flux_eps_in=ice_atm_flux_eps, &
+           ice_atm_flux_damping_in=ice_atm_flux_damping, &
            albedo_type_in=albedo_type, R_ice_in=R_ice, R_pnd_in=R_pnd, &
            R_snw_in=R_snw, dT_mlt_in=dT_mlt, rsnw_mlt_in=rsnw_mlt, &
            kstrength_in=kstrength, krdg_partic_in=krdg_partic, &
