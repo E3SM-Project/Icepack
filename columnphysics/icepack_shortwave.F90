@@ -1559,6 +1559,8 @@
             if (fp > puny) then
 
                ! calculate ponded ice
+               ! SNICAR-AD extends snow optics only; pond water and the ice
+               ! beneath ponds retain the 3-band optical properties.
 
                srftyp = 2
                call compute_dEdd_3bd(                           &
@@ -4385,6 +4387,8 @@
 !   2018:  Cheng Dang merged with SNICAR 5-band snow and aersols IOPs, UC Irvine
 !
 ! Note by Cheng Dang 2018:
+! This routine supports snow-covered sea ice only. Bare and ponded ice
+! retain the 3-band treatment in compute_dEdd_3bd.
 ! This subroutine kept the existing delta-eddington adding-doubling (-ad)
 ! method, snow and sea ice layer sturcture, and most of the code structures
 ! of subroutine compute_dEdd_3bd, with major changes listed below to merge
@@ -4466,25 +4470,24 @@
          Iswabs     ! SW absorbed in ice layer (W m-2)
 
 !-----------------------------------------------------------------------
-! Set up optical property profiles, based on snow, sea ice and ponded
-! ice IOPs from:
+! Set up optical property profiles for snow-covered sea ice using SNICAR
+! snow IOPs (Dang et al., 2019, cited above) and sea ice IOPs based on:
 !
 ! Briegleb, B. P., and B. Light (2007): A Delta-Eddington Multiple
 !    Scattering Parameterization for Solar Radiation in the Sea Ice
 !    Component of the Community Climate System Model, NCAR Technical
 !    Note  NCAR/TN-472+STR  February 2007
 !
-! Computes column Delta-Eddington radiation solution for specific
-! surface type: either snow over sea ice, bare sea ice, or ponded sea ice.
+! Computes the column Delta-Eddington radiation solution for snow over
+! sea ice (srftyp = 1), including absorption in the underlying ice.
 !
-! Divides solar spectrum into 3 intervals: 0.2-0.7, 0.7-1.19, and
-! 1.19-5.0 micro-meters. The latter two are added (using an assumed
-! partition of incident shortwave in the 0.7-5.0 micro-meter band between
-! the 0.7-1.19 and 1.19-5.0 micro-meter band) to give the final output
-! of 0.2-0.7 visible and 0.7-5.0 near-infrared albedos and fluxes.
+! Uses the 5 SNICAR bands: 0.3-0.7, 0.7-1.0, 1.0-1.2, 1.2-1.5, and
+! 1.5-5.0 micro-meters. The four near-infrared bands are combined using
+! separate direct and diffuse spectral weights to return visible and
+! near-infrared albedos and fluxes.
 !
 ! Specifies vertical layer optical properties based on input snow depth,
-! density and grain radius, along with ice and pond depths, then computes
+! density and grain radius, along with ice depth, then computes
 ! layer by layer Delta-Eddington reflectivity, transmissivity and combines
 ! layers (done by calling routine solution_dEdd). Finally, surface albedos
 ! and internal fluxes/flux divergences are evaluated.

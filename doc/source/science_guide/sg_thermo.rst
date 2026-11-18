@@ -930,7 +930,12 @@ layers of ice, and updated IOP values.
 In addition, a 5-band option for snow has
 been added based on :cite:`Dang19` using parameters derived from the
 SNICAR snow model (``shortwave`` = ``dEdd_snicar_ad``). The 3-band
-Delta-Eddington data is still used for non-snow-covered surfaces. The
+Delta-Eddington treatment is still used for non-snow-covered surfaces,
+including bare ice and ponded ice. Thus, ``dEdd_snicar_ad`` selects a
+5-band treatment of snow-covered sea ice, not a 5-band treatment of every
+surface type. Pond water and the ice beneath ponds retain their 3-band
+optical properties and radiative transfer calculation. Both treatments
+use the Delta-Eddington adding-doubling radiative transfer solver. The
 5-band option calculates snow radiative transfer properties for 1 visible and
 4 near-infrared bands, and the reflection, absorption and transmission of
 direct and diffuse shorwave incidents are computed separately, thus removing
