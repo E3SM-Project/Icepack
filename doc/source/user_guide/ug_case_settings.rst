@@ -136,6 +136,9 @@ setup_nml
    "``days_per_year``", "integer", "number of days in a model year", "365"
    "``diagfreq``", "integer", "frequency of diagnostic output in timesteps", "24"
    "``diag_file``", "string", "diagnostic output filename", "'ice_diag'"
+   "``mushy_diagnostics``", "logical", "write optional mushy-layer CSV diagnostics; see :ref:`mushy_testing`", "``.false.``"
+   "``mushy_diagfreq``", "positive integer", "column diagnostic sampling interval in timesteps", "1"
+   "``mushy_profilefreq``", "positive integer", "additional ice/snow profile and local energy sampling interval; both intervals must select the step", "1"
    "``dumpfreq``", "``d``", "write restart every ``dumpfreq_n`` days", "``y``"
    "", "``m``", "write restart every ``dumpfreq_n`` months", ""
    "", "``y``", "write restart every ``dumpfreq_n`` years", ""
@@ -222,6 +225,7 @@ thermo_nml
    "``ktherm``", "``-1``", "thermodynamic model disabled", "1"
    "", "``1``", "Bitz and Lipscomb thermodynamic model", ""
    "", "``2``", "mushy-layer thermodynamic model", ""
+   "``mushy_zero_salinity``", "logical", "allow exact-zero bulk ice salinity with ``ktherm=2``; see :ref:`thermo-mushy-zero-salinity`", "``.false.``"
    "``phi_c_slow_mode``", ":math:`0<\phi_c < 1`", "critical liquid fraction", "0.05"
    "``phi_i_mushy``", ":math:`0<\phi_i < 1`", "solid fraction at lower boundary", "0.85"
    "``Rac_rapid_mode``", "real", "critical Rayleigh number", "10.0"
@@ -327,6 +331,21 @@ snow_nml
 forcing_nml
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 
+``nfreq`` is the number of wave frequencies passed to the public parameter
+initializer.  Its default is the configured Icepack default (25 in the supplied
+namelist).  Wave-free pinned scientific configurations can explicitly select
+zero without modifying driver source.
+
+For standalone prescribed-boundary experiments, ``sst_at_freezing=.true.``
+sets actual ocean SST to the freezing temperature calculated from the current,
+interpolated ocean salinity and ``tfrz_option`` at every forcing update.
+It overrides the initialized SST and does not use SST from the input file.
+Both ``oceanmixed_ice`` and ``restore_ocn`` must be false; conflicting settings
+abort rather than combining different temperature controls.
+With ``tfrz_option='mushy'``, zero ocean salinity gives zero SST.
+This imposed temperature is not an evolving ocean heat budget. The option
+defaults to false and does not change the ``mushy_zero_salinity`` default.
+
 .. csv-table:: **forcing_nml namelist options**
    :header: "variable", "options/format", "description", "default value"
    :widths: 15, 15, 30, 15 
@@ -395,6 +414,7 @@ forcing_nml
    "","``prognostic``","use actual sea ice bulk salinity in flux"
    "``semi-implicit_Tsfc``", "logical", "surface temperature coupling option based on d(hf)/dTs", "``.false.``"
    "``sss_fixed``", "real", "constant ocean mixed layer salinity in ppt", "34.0"
+   "``sst_at_freezing``", "logical", "prescribe SST at the current ocean freezing point; standalone driver only", "``.false.``"
    "``tfrz_option``","``constant``", "constant ocean freezing temperature (Tocnfrz)","``mushy``"
    "", "``linear_salt``", "linear function of salinity (ktherm=1)", ""
    "", "``minus1p8``", "constant ocean freezing temperature (:math:`-1.8^{\circ} C`)", ""

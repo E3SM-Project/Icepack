@@ -1,0 +1,11 @@
+ktherm             = 2
+mushy_zero_salinity = .true.
+saltmax            = 0.0
+ice_ref_salinity   = 0.0
+sss_fixed          = 0.0
+saltflux_option    = 'prognostic'
+atm_data_type      = 'default'
+ocn_data_type      = 'default'
+tr_pond_lvl        = .false.
+tr_pond_topo       = .false.
+tr_pond_sealvl     = .false.

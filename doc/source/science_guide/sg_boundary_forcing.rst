@@ -303,6 +303,14 @@ sends coupling fluxes representing the difference between the mushy frazil
 fluxes and fluxes computed assuming the frazil is purely fresh ice.
 Otherwise the internally computed frazil fluxes are sent to the coupler.
 
+The mushy frazil salinity and initial thermodynamic state are defined by
+Equations :eq:`mushy-frazil-salinity` and :eq:`mushy-frazil-temperature`
+in :ref:`thermo-mushy-zero-salinity`. In particular, exact-zero ``SSS``
+gives zero new-frazil salinity, but frazil water may still form. The
+``mushy_zero_salinity`` option enables the corresponding bulk-ice phase
+closure; it does not set ocean ``SSS``. The tests are described in
+:ref:`mushy_testing`.
+
 There is a flux of salt into the ocean under melting conditions, and a
 (negative) flux when sea water is freezing. However, melting sea ice
 ultimately freshens the top ocean layer, since the ocean is much more

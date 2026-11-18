@@ -27,7 +27,6 @@
       use icepack_parameters, only: p001, p1, p333, p5, p666, puny, bignum
       use icepack_parameters, only: rhos, rhoi, Lfresh, ice_ref_salinity
       use icepack_parameters, only: phi_init, dsin0_frazil
-      use icepack_parameters, only: Tliquidus_max
       use icepack_parameters, only: rhosi, conserv_check, rhosmin, snwredist
       use icepack_parameters, only: kitd, ktherm, min_salin
       use icepack_parameters, only: z_tracers, hfrazilmin, hi_min
@@ -52,7 +51,7 @@
       use icepack_itd, only: aggregate_area, shift_ice
       use icepack_itd, only: column_sum, column_conservation_check
       use icepack_isotope, only: isoice_alpha, isotope_frac_method
-      use icepack_mushy_physics, only: liquidus_temperature_mush, icepack_enthalpy_mush
+      use icepack_mushy_physics, only: icepack_mushy_frazil_state
       use icepack_zbgc, only: add_new_ice_bgc
       use icepack_zbgc, only: lateral_melt_bgc
       use icepack_zbgc_shared, only: bgrid, cgrid, igrid
@@ -1471,12 +1470,6 @@
             vi0new = frazilm * dt / rhoi
             if (vi0new > puny) then
                Si0new = c1000 * frazils / frazilm
-               if (Si0new < min_salin) then
-                  write(warnstr,*) subname, 'omega-fluxes frazil salinity below min_salin (g/kg): ', &
-                                  Si0new, min_salin
-                  call icepack_warnings_add(warnstr)
-               endif
-               Si0new = max(c1000 * frazils / frazilm, min_salin)
                qi0new = -frazilh / frazilm * rhoi
             else
                Si0new = sss
@@ -1484,13 +1477,7 @@
                vi0new = c0
             endif
          else
-            if (sss > c2 * dSin0_frazil) then
-               Si0new = sss - dSin0_frazil
-            else
-               Si0new = sss**2 / (c4*dSin0_frazil)
-            endif
-            Ti = min(liquidus_temperature_mush(Si0new/phi_init), Tliquidus_max)
-            qi0new = icepack_enthalpy_mush(Ti, Si0new)
+            call icepack_mushy_frazil_state(sss, Si0new, Ti, qi0new, dSin0_frazil_cell=dSin0_frazil)
          endif
          do k = 1, nilyr
             Sprofile(k) = Si0new

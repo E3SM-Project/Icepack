@@ -1,0 +1,28 @@
+
+# Preserve a canonical native run/restart for the standard baseline.script.
+# Ensemble builds/evidence stay in the case directory, outside the run baseline.
+./icepack.run
+set runres = $status
+set science = 2
+if ($runres == 0) then
+  set science_dir = `mktemp -d "${ICE_CASEDIR}/mushy-results.XXXXXX"`
+  if ($status != 0 || "$science_dir" == "") then
+    echo "ERROR: could not create a unique mushy results directory"
+  else
+    python3 ${ICE_SCRIPTS}/tests/test_mushy_layer.py run \
+      --icepack-root ${ICE_SANDBOX} --machine ${ICE_MACHINE} \
+      --environment ${ICE_ENVNAME} --suite core \
+      --output ${science_dir}/results
+    set science = $status
+  endif
+endif
+
+grep -iv "${ICE_TESTNAME} run" ${ICE_CASEDIR}/test_output | \
+  grep -iv "${ICE_TESTNAME} test" >! ${ICE_CASEDIR}/test_output.prev
+mv -f ${ICE_CASEDIR}/test_output.prev ${ICE_CASEDIR}/test_output
+set grade = FAIL
+if ($runres == 0) set grade = PASS
+echo "$grade ${ICE_TESTNAME} run" >> ${ICE_CASEDIR}/test_output
+set grade = FAIL
+if ($runres == 0 && $science == 0) set grade = PASS
+echo "$grade ${ICE_TESTNAME} test" >> ${ICE_CASEDIR}/test_output

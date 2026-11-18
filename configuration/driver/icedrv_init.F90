@@ -64,6 +64,7 @@
       subroutine input_data
 
       use icedrv_diagnostics, only: diag_file, nx_names
+      use icedrv_mushy_diagnostics, only: mushy_diagnostics, mushy_diagfreq, mushy_profilefreq
       use icedrv_domain_size, only: nilyr, nslyr, nblyr, max_ntrcr, ncat
       use icedrv_domain_size, only: n_iso, n_aero, nfsd
       use icedrv_calendar, only: year_init, istep0
@@ -81,6 +82,7 @@
       use icedrv_forcing, only: atm_data_format, ocn_data_format, bgc_data_format
       use icedrv_forcing, only: data_dir
       use icedrv_forcing, only: oceanmixed_ice, restore_ocn, trestore
+      use icedrv_forcing, only: sst_at_freezing
       use icedrv_forcing, only: snw_ssp_table, lateral_flux_type
       use icedrv_forcing, only: precalc_forc
 
@@ -101,12 +103,12 @@
          mu_rdg, hs0, dpscale, rfracmin, rfracmax, pndaspect, hs1, hp1, &
          apnd_sl, tscale_pnd_drain, itd_area_min, itd_mass_min, &
          a_rapid_mode, Rac_rapid_mode, aspect_rapid_mode, dSdt_slow_mode, &
-         phi_c_slow_mode, phi_i_mushy, kalg, emissivity, floediam, hfrazilmin, &
+         phi_c_slow_mode, phi_i_mushy, saltmax, kalg, emissivity, floediam, hfrazilmin, &
          rsnw_fall, rsnw_tmax, rhosnew, rhosmin, rhosmax, &
          windmin, drhosdwind, snwlvlfac, snw_growth_wet, drsnw_min, snwliq_max
 
       integer (kind=int_kind) :: ktherm, kstrength, krdg_partic, krdg_redist, &
-         natmiter, kitd, kcatbound
+         natmiter, kitd, kcatbound, nfreq
 
       character (len=char_len) :: shortwave, albedo_type, conduct, fbot_xfer_type, &
          cpl_frazil, congel_freeze, tfrz_option, saltflux_option, &
@@ -124,6 +126,7 @@
 
       logical (kind=log_kind) :: calc_Tsfc, formdrag, highfreq, calc_strair, calc_dragio
       logical (kind=log_kind) :: conserv_check, semi_implicit_Tsfc, vapor_flux_correction
+      logical (kind=log_kind) :: mushy_zero_salinity
 
       integer (kind=int_kind) :: ntrcr
       logical (kind=log_kind) :: tr_iage, tr_FY, tr_lvl, tr_pond, tr_snow
@@ -149,7 +152,8 @@
         ice_ic,         restart,        restart_dir,     restart_file,  &
         restart_format, &
         dumpfreq,       diagfreq,       diag_file,       cpl_bgc,       &
-        conserv_check,  history_format,                                 &
+        conserv_check,  history_format, &
+        mushy_diagnostics, mushy_diagfreq, mushy_profilefreq, &
         hi_init_slab,   hsno_init_slab, hbar_init_itd,   hsno_init_itd, &
         sst_init,       itd_area_min,   itd_mass_min
 
@@ -157,7 +161,7 @@
         kcatbound
 
       namelist /thermo_nml/ &
-        kitd,           ktherm,          ksno,     conduct,             &
+        kitd,           ktherm,          mushy_zero_salinity, saltmax, ksno, conduct, &
         a_rapid_mode,   Rac_rapid_mode,  aspect_rapid_mode,             &
         dSdt_slow_mode, phi_c_slow_mode, phi_i_mushy,                   &
         floediam,       hfrazilmin,      Tliquidus_max,    hi_min,      &
@@ -193,7 +197,7 @@
         atmiter_conv,    calc_dragio,     congel_freeze,   &
         tfrz_option,     saltflux_option, ice_ref_salinity,&
         cpl_frazil,      default_season,                   &
-        wave_spec_type,  wave_height_type,                 &
+        wave_spec_type,  wave_height_type, nfreq,          &
         precip_units,    fyear_init,      ycycle,          &
         atm_data_type,   ocn_data_type,   bgc_data_type,   &
         lateral_flux_type,                                 &
@@ -201,6 +205,7 @@
         ice_data_file,                                     &
         atm_data_format, ocn_data_format, bgc_data_format, &
         data_dir,        trestore,        restore_ocn,     &
+        sst_at_freezing,                                   &
         sss_fixed,       qdp_fixed,       hmix_fixed,      &
         precalc_forc,    semi_implicit_Tsfc,               &
         vapor_flux_correction
@@ -239,6 +244,8 @@
            pndaspect_out=pndaspect, hs1_out=hs1, hp1_out=hp1, &
            apnd_sl_out=apnd_sl, tscale_pnd_drain_out=tscale_pnd_drain, &
            ktherm_out=ktherm, calc_Tsfc_out=calc_Tsfc, &
+           mushy_zero_salinity_out=mushy_zero_salinity, &
+           saltmax_out=saltmax, &
            semi_implicit_Tsfc_out=semi_implicit_Tsfc, &
            vapor_flux_correction_out=vapor_flux_correction, &
            floediam_out=floediam, hfrazilmin_out=hfrazilmin, &
@@ -253,7 +260,7 @@
            tfrz_option_out=tfrz_option, saltflux_option_out=saltflux_option, &
            ice_ref_salinity_out=ice_ref_salinity, kalg_out=kalg, &
            fbot_xfer_type_out=fbot_xfer_type, puny_out=puny, &
-           wave_spec_type_out=wave_spec_type, &
+           wave_spec_type_out=wave_spec_type, nfreq_out=nfreq, &
            wave_height_type_out=wave_height_type, &
            sw_redist_out=sw_redist, sw_frac_out=sw_frac, sw_dtemp_out=sw_dtemp, &
            snwredist_out=snwredist, use_smliq_pnd_out=use_smliq_pnd, &
@@ -280,6 +287,9 @@
       dt = 3600.0_dbl_kind   ! time step, s
       npt = 99999            ! total number of time steps (dt)
       diagfreq = 24          ! how often diag output is written
+      mushy_diagnostics = .false.
+      mushy_diagfreq = 1
+      mushy_profilefreq = 1
       diag_file = 'ice_diag' ! history file name prefix
       cpl_bgc = .false.      !
       dumpfreq='y'           ! restart frequency option
@@ -308,6 +318,7 @@
       precip_units    = 'mks'     ! 'mm_per_month' or
                                   ! 'mm_per_sec' = 'mks' = kg/m^2 s
       oceanmixed_ice  = .false.   ! if true, use internal ocean mixed layer
+      sst_at_freezing = .false.   ! prescribe sst at the current freezing point
       wave_spec_type  = 'none'    ! type of wave spectrum forcing
       wave_height_type= 'none'    ! type of wave height forcing
       ocn_data_format = 'bin'     ! file format ('bin'=binary or 'nc'=netcdf)
@@ -630,6 +641,15 @@
          calc_Tsfc = .true.
       endif
 
+      if (mushy_zero_salinity .and. ktherm /= 2) then
+         call icedrv_system_abort(string='mushy_zero_salinity requires ktherm=2')
+      endif
+
+      if (sst_at_freezing .and. (oceanmixed_ice .or. restore_ocn)) then
+         call icedrv_system_abort( &
+             string='sst_at_freezing requires oceanmixed_ice=F and restore_ocn=F')
+      endif
+
       if (ktherm == 1 .and. trim(tfrz_option) /= 'linear_salt') then
          write (nu_diag,*) &
          'WARNING: ktherm = 1 and tfrz_option = ',trim(tfrz_option)
@@ -713,6 +733,9 @@
          write(nu_diag,1000) ' dt                        = ', dt
          write(nu_diag,1020) ' npt                       = ', npt
          write(nu_diag,1020) ' diagfreq                  = ', diagfreq
+         write(nu_diag,1010) ' mushy_diagnostics         = ', mushy_diagnostics
+         write(nu_diag,1020) ' mushy_diagfreq            = ', mushy_diagfreq
+         write(nu_diag,1020) ' mushy_profilefreq         = ', mushy_profilefreq
          write(nu_diag,1030) ' dumpfreq                  = ', trim(dumpfreq)
          write(nu_diag,1010) ' dump_last                 = ', dump_last
          write(nu_diag,1010) ' restart                   = ', restart
@@ -851,11 +874,13 @@
          write(nu_diag,1010) ' wave_spec                 = ', wave_spec
          if (wave_spec) &
          write(nu_diag,1030) ' wave_spec_type            = ', trim(wave_spec_type)
+         write(nu_diag,1020) ' nfreq                     = ', nfreq
          write(nu_diag,1010) ' l_mpond_fresh             = ', l_mpond_fresh
          write(nu_diag,1005) ' ustar_min                 = ', ustar_min
          write(nu_diag,1005) ' hi_min                    = ', hi_min
          write(nu_diag,1030) ' fbot_xfer_type            = ', trim(fbot_xfer_type)
          write(nu_diag,1010) ' oceanmixed_ice            = ', oceanmixed_ice
+         write(nu_diag,1010) ' sst_at_freezing           = ', sst_at_freezing
          write(nu_diag,1030) ' congel_freeze             = ', trim(congel_freeze)
          write(nu_diag,1030) ' tfrz_option               = ', trim(tfrz_option)
          write(nu_diag,*)    ' saltflux_option           = ', &
@@ -1043,6 +1068,8 @@
            apnd_sl_in=apnd_sl, tscale_pnd_drain_in=tscale_pnd_drain, &
            floediam_in=floediam, hfrazilmin_in=hfrazilmin, &
            ktherm_in=ktherm, calc_Tsfc_in=calc_Tsfc, &
+           mushy_zero_salinity_in=mushy_zero_salinity, &
+           saltmax_in=saltmax, &
            semi_implicit_Tsfc_in=semi_implicit_Tsfc, &
            vapor_flux_correction_in=vapor_flux_correction, &
            conduct_in=conduct, a_rapid_mode_in=a_rapid_mode, &
@@ -1058,7 +1085,7 @@
            fbot_xfer_type_in=fbot_xfer_type, &
            wave_spec_type_in=wave_spec_type, &
            wave_height_type_in=wave_height_type, &
-           wave_spec_in=wave_spec, &
+           wave_spec_in=wave_spec, nfreq_in=nfreq, &
            sw_redist_in=sw_redist, sw_frac_in=sw_frac, sw_dtemp_in=sw_dtemp, &
            snwredist_in=snwredist, use_smliq_pnd_in=use_smliq_pnd, &
            snw_aging_table_in=snw_aging_table, &

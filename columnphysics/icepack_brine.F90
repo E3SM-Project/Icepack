@@ -9,7 +9,7 @@
       use icepack_kinds
       use icepack_parameters, only: p01, p001, p5, c0, c1, c2, c1p5, puny, p25
       use icepack_parameters, only: gravit, rhoi, rhow, rhos, depressT
-      use icepack_parameters, only: min_salin, rhosi
+      use icepack_parameters, only: min_salin, rhosi, mushy_zero_salinity
       use icepack_parameters, only: l_sk
       use icepack_tracers, only: nilyr, nblyr, ntrcr, nt_qice, nt_sice
       use icepack_tracers, only: nt_Tsfc
@@ -19,16 +19,21 @@
       use icepack_warnings, only: warnstr, icepack_warnings_add
       use icepack_warnings, only: icepack_warnings_setabort, icepack_warnings_aborted
 
-      use icepack_mushy_physics, only: icepack_mushy_temperature_mush, icepack_mushy_liquid_fraction
+      use icepack_mushy_physics, only: icepack_mushy_state
 
       implicit none
 
       private
       public :: preflushing_changes, &
                 compute_microS_mushy, &
+                icepack_mushy_microstructure, &
                 update_hbrine, &
                 calculate_drho, &
                 icepack_init_hbrine
+
+      interface compute_microS_mushy
+         module procedure icepack_mushy_microstructure
+      end interface
 
       real (kind=dbl_kind), parameter :: &
          maxhbr  = 1.25_dbl_kind  , & ! brine overflows if hbr > maxhbr*hin
@@ -123,13 +128,18 @@
 ! NOTE: This subroutine uses thermosaline_vertical output to compute
 ! average ice permeability and the surface ice porosity
 
-      subroutine compute_microS_mushy (trcrn,    hice_old,   hbr_old,    &
+!autodocument_start icepack_mushy_microstructure
+! Compute phase and transport properties on the biology grid. Initialize tracer
+! sizes/indices and icepack_init_hbrine first. Optional diagnostics contain only
+! interior layers, excluding the surface and ocean boundary points.
+      subroutine icepack_mushy_microstructure (trcrn,    hice_old,   hbr_old,    &
                                        sss,      sst,        bTin,       &
                                        iTin,     bphin,                  &
                                        kperm,    bphi_min,               &
                                        bSin,     brine_sal,  brine_rho,  &
                                        iphin,    ibrine_rho, ibrine_sal, &
-                                       iDin,     iSin)
+                                       iDin,     iSin, &
+                                       enthalpy_out, liquid_fraction_before_out)
 
       real (kind=dbl_kind), intent(in) :: &
          hice_old    , & ! previous timestep ice height (m)
@@ -165,6 +175,11 @@
          bTin        , & ! Temperature on bgrid
          bphin           ! porosity on bgrid
 
+      real (kind=dbl_kind), dimension(nblyr), intent(out), optional :: &
+         enthalpy_out, & ! remapped, nonpositive interior enthalpy (J m-3)
+         liquid_fraction_before_out ! interior liquid fraction before microstructure
+!autodocument_end
+
       ! local variables
 
       real (kind=dbl_kind), dimension (nilyr) :: &
@@ -194,14 +209,23 @@
       real (kind=dbl_kind), dimension(nblyr+1) :: &
          drho            ! brine density difference (kg/m^3)
 
-      real(kind=dbl_kind), parameter :: &
-         Smin = p01
+      real(kind=dbl_kind) :: Smin
 
       character(len=*),parameter :: subname='(compute_microS_mushy)'
 
       !-----------------------------------------------------------------
       ! Define ice salinity and temperature on bgrid
       !-----------------------------------------------------------------
+
+      if (.not. allocated(cgrid) .or. .not. allocated(bgrid) .or. .not. allocated(igrid)) then
+         call icepack_warnings_add(subname//' call icepack_init_hbrine before microstructure')
+         call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+         return
+      endif
+
+      ! Retain legacy floors by default; the opt-in path preserves exact-zero salt.
+      Smin = p01
+      if (mushy_zero_salinity) Smin = c0
 
       trtmp_s(:) = c0
       trtmp_q(:) = c0
@@ -213,7 +237,9 @@
       enddo
 
       ! map Sin and qin (cice) profiles to bgc grid
+      ! Do not reintroduce a positive surface-salinity floor when enabled.
       surface_S = min_salin
+      if (mushy_zero_salinity) surface_S = c0
       hinc_old  = hice_old
 
       call remap_zbgc(nilyr,          &
@@ -237,9 +263,11 @@
       do k = 1, nblyr
          bqin (k+1) = min(c0,   trtmp_q(nt_qice+k-1))
          bSin (k+1) = max(Smin, trtmp_s(nt_sice+k-1))
-         bTin (k+1) = icepack_mushy_temperature_mush(bqin(k+1), bSin(k+1))
-         bphin(k+1) = icepack_mushy_liquid_fraction (bTin(k+1), bSin(k+1))
+         call icepack_mushy_state(bqin(k+1), bSin(k+1), bTin(k+1), bphin(k+1))
       enddo    ! k
+
+      if (present(enthalpy_out)) enthalpy_out = bqin(2:nblyr+1)
+      if (present(liquid_fraction_before_out)) liquid_fraction_before_out = bphin(2:nblyr+1)
 
       bSin (1)       = bSin(2)
       bTin (1)       = bTin(2)
@@ -272,7 +300,7 @@
                     + l_sk*ikin(k)*gravit/viscos_dynamic*drho(k)/hbr_old**2
       enddo    ! k
 
-      end subroutine compute_microS_mushy
+      end subroutine icepack_mushy_microstructure
 
 !=======================================================================
 
@@ -330,12 +358,36 @@
             igrm = igrid(k) - igrid(k-1)
          endif
 
-         brine_sal(k) = a1*bTin(k)    &
-                      + a2*bTin(k)**2 &
-                      + a3*bTin(k)**3
-         brine_rho(k) = b1 + b2*brine_sal(k)
-         bphin    (k) = max(puny, bSin(k)*rhosi &
-                      / (brine_sal(k)*brine_rho(k)))
+         ! Fresh ice has no brine salinity; use freshwater density rather than
+         ! evaluating the brine concentration/porosity quotient at zero salt.
+         if (mushy_zero_salinity .and. bSin(k) == c0) then
+            brine_sal(k) = c0
+            brine_rho(k) = b1
+         else
+            brine_sal(k) = a1*bTin(k)    &
+                         + a2*bTin(k)**2 &
+                         + a3*bTin(k)**3
+            brine_rho(k) = b1 + b2*brine_sal(k)
+            if (mushy_zero_salinity) then
+               if (brine_sal(k) > c0) then
+                  bphin(k) = max(c0, min(c1, bSin(k)*rhosi &
+                       / (brine_sal(k)*brine_rho(k))))
+               else
+                  ! If the brine polynomial is nonpositive, recover salinity
+                  ! from phase-state porosity; reject inconsistent positive salt.
+                  if (bphin(k) <= c0) then
+                     call icepack_warnings_add(subname//' positive salt with zero porosity')
+                     call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+                     return
+                  endif
+                  brine_sal(k) = bSin(k)*rhosi / (bphin(k)*brine_rho(k))
+                  brine_rho(k) = b1 + b2*brine_sal(k)
+               endif
+            else
+               bphin(k) = max(puny, bSin(k)*rhosi &
+                    / (brine_sal(k)*brine_rho(k)))
+            endif
+         endif
          bphin    (k) = min(c1, bphin(k))
          kin      (k) = k_o*bphin(k)**exp_h
       enddo    ! k
@@ -374,8 +426,10 @@
          ibrine_rho(k) = (brine_rho(k+1)*igrp + brine_rho(k)*igrm) * rigr
          iTin      (k) = (bTin     (k+1)*igrp + bTin     (k)*igrm) * rigr
          iSin      (k) = (bSin     (k+1)*igrp + bSin     (k)*igrm) * rigr
-         iphin     (k) = max(puny, &
-                         (bphin    (k+1)*igrp + bphin    (k)*igrm) * rigr)
+         iphin     (k) = (bphin    (k+1)*igrp + bphin    (k)*igrm) * rigr
+         ! Preserve exact-zero porosity; a positive floor would create
+         ! artificial permeability.
+         if (.not.mushy_zero_salinity) iphin(k) = max(puny, iphin(k))
          iphin     (k) = min(c1, iphin (k))
       enddo    ! k
 
@@ -481,34 +535,54 @@
                bphi_min   = bphin
                dhrunoff  = -dhS_top*aice0
                hbrocn    = max(c0,hbrocn - dhrunoff)
-               exp_arg = darcy_coeff/bphi_min*dt
+               ! No liquid means no Darcy exchange; direct runoff is still
+               ! applied below.
+               if (bphi_min > c0) then
+                  exp_arg = darcy_coeff/bphi_min*dt
 ! tcraig avoids underflows
-               if (exp_arg > exp_argmax) then
-                  hbrocn_new = c0
+                  if (exp_arg > exp_argmax) then
+                     hbrocn_new = c0
+                  else
+                     hbrocn_new = hbrocn*exp(-exp_arg)
+                  endif
                else
-                  hbrocn_new = hbrocn*exp(-exp_arg)
+                  hbrocn_new = hbrocn
                endif
                hbr = max(hbrmin, h_ocn + hbrocn_new)
                hbrocn_new = hbr-h_ocn
-               darcy_V = -SIGN((hbrocn-hbrocn_new)/dt*bphi_min, hbrocn)
+               if (bphi_min > c0) then
+                  darcy_V = -SIGN((hbrocn-hbrocn_new)/dt*bphi_min, hbrocn)
+                  dhS_top = dhS_top - darcy_V*dt/bphi_min
+                  dh_top_chl = dh_top_chl - darcy_V*dt/bphi_min
+               endif
                darcy_V_chl= darcy_V
-               dhS_top    = dhS_top - darcy_V*dt/bphi_min + dhrunoff
-               dh_top_chl = dh_top_chl - darcy_V_chl*dt/bphi_min + dhrunoff
+               dhS_top = dhS_top + dhrunoff
+               dh_top_chl = dh_top_chl + dhrunoff
                dh_direct  = dhrunoff
             elseif (hbrocn < c0 .AND. hbr > thinS) then
-               exp_arg = darcy_coeff/bphi_min*dt
+               ! Likewise, skip Darcy flooding at zero porosity but retain
+               ! direct flooding.
+               if (bphi_min > c0) then
+                  exp_arg = darcy_coeff/bphi_min*dt
 ! tcraig avoids underflows
-               if (exp_arg > exp_argmax) then
-                  hbrocn_new = c0
+                  if (exp_arg > exp_argmax) then
+                     hbrocn_new = c0
+                  else
+                     hbrocn_new = hbrocn*exp(-exp_arg)
+                  endif
                else
-                  hbrocn_new = hbrocn*exp(-exp_arg)
+                  hbrocn_new = hbrocn
                endif
                dhflood  = max(c0,hbrocn_new - hbrocn)*aice0
                hbr = max(hbrmin, h_ocn + hbrocn_new)
-               darcy_V    = -SIGN((hbrocn-hbrocn_new + dhflood)/dt*bphi_min, hbrocn)
+               if (bphi_min > c0) then
+                  darcy_V    = -SIGN((hbrocn-hbrocn_new + dhflood)/dt*bphi_min, hbrocn)
+                  dhS_top    = dhS_top - darcy_V*dt/bphi_min
+                  dh_top_chl = dh_top_chl - darcy_V*dt/bphi_min
+               endif
                darcy_V_chl= darcy_V
-               dhS_top    = dhS_top - darcy_V*dt/bphi_min - dhflood
-               dh_top_chl = dh_top_chl - darcy_V_chl*dt/bphi_min - dhflood
+               dhS_top = dhS_top - dhflood
+               dh_top_chl = dh_top_chl - dhflood
                dh_direct  = -dhflood
             endif
 
