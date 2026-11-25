@@ -382,6 +382,15 @@
          else   ! not skl_bgc
 
             if (scale_bgc .and. ktherm == 2) then
+               if (sss < c0) then
+                  call icepack_warnings_add(subname//' scale_bgc: negative ocean salinity')
+                  call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+                  return
+               endif
+               if (sss == c0 .and. nbtrcr > 0 .and. any(sicen /= c0)) then
+                  call icepack_warnings_add(subname// &
+                       ' scale_bgc: zero ocean salinity with nonzero ice salt; initializing BGC tracers to zero')
+               endif
                trtmp(:) = c0
                do n = 1,ncat
                   call remap_zbgc(nilyr,    &
@@ -396,18 +405,11 @@
 
                   do mm = 1,nbtrcr
                   do k = 1, nblyr + 1
-                     ! Scaling divides by ocean SSS; at zero, only zero mapped
-                     ! ice salt is consistent, otherwise stop instead of hiding it.
                      if (sss > c0) then
                         trcrn(bio_index(mm)+k-1-ntrcr_o,n) = &
                              trtmp(k)/sss*ocean_bio_all(bio_index_o(mm))
-                     elseif (trtmp(k) == c0) then
-                        trcrn(bio_index(mm)+k-1-ntrcr_o,n) = c0
                      else
-                        call icepack_warnings_add( &
-                             subname//' scale_bgc: nonzero ice salt with zero ocean SSS')
-                        call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
-                        return
+                        trcrn(bio_index(mm)+k-1-ntrcr_o,n) = c0
                      endif
                      trcrn(bio_index(mm)+nblyr+1-ntrcr_o:bio_index(mm)+nblyr+2-ntrcr_o,n) = c0 ! snow
                   enddo  ! k

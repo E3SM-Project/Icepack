@@ -301,9 +301,17 @@ handled entirely outside of Icepack. When ``ktherm=2``,
 ``cpl_frazil = 'fresh_ice_correction'``
 sends coupling fluxes representing the difference between the mushy frazil 
 fluxes and fluxes computed assuming the frazil is purely fresh ice.
-Otherwise the internally computed frazil fluxes are sent to the coupler.
+For ``cpl_frazil = 'omega-fluxes'`` and ``ktherm=2``, the externally
+supplied frazil mass, salt and enthalpy fluxes determine the new ice state;
+the coupler handles the corresponding ocean fluxes. With
+``mushy_zero_salinity`` enabled, nonnegative incoming frazil salinity is
+preserved, and negative incoming salinity is rejected. With it disabled,
+the legacy ``min_salin`` floor is applied with a warning. If the incoming
+salinity is below that floor, this adds salt to the ice without a matching
+ocean flux correction.
 
-The mushy frazil salinity and initial thermodynamic state are defined by
+For coupling modes other than ``omega-fluxes``, the mushy frazil salinity
+and initial thermodynamic state are defined by
 Equations :eq:`mushy-frazil-salinity` and :eq:`mushy-frazil-temperature`
 in :ref:`thermo-mushy-zero-salinity`. In particular, exact-zero ``SSS``
 gives zero new-frazil salinity, but frazil water may still form. The

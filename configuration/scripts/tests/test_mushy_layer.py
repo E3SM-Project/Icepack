@@ -64,7 +64,7 @@ CASES = {
     "T8": Case("Whole-column water/salt and local heat budgets", True),
     "T9": Case("Static observed-profile adaptation", False, "descriptive", ("profiles",)),
     "T10-brine": Case("Controlled and integrated brine phase physics", True),
-    "T10-BGC": Case("Active BGC scaling initializer and guard", True),
+    "T10-BGC": Case("Active BGC scaling initializer", True),
     "T10": Case("Annual freshwater namelist matrix", False),
     "T10-cost": Case("Four-cell debug and I/O-included cost", False, "descriptive"),
     "T11": Case("Two-year prescribed salinity-notch sensitivity", False,
@@ -96,7 +96,8 @@ DATASETS = {
     },
 }
 NUMBER = re.compile(r"(?<![A-Za-z0-9_.])[-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[EeDd][-+]?\d+)?")
-RESULT_SCHEMA = 4
+RESULT_SCHEMA = 5
+BGC_MARKERS = ("BGC_ZERO_OK", "BGC_TINY_OK", "BGC_SALINE_ICE_OK", "BGC_NEGATIVE_OK")
 FRESH = {
     "npt": "48", "dumpfreq": "'d'", "dump_last": ".true.",
     "history_format": "'none'", "tr_pond_lvl": ".false.",
@@ -491,6 +492,120 @@ end program
 def phase_client(cap: float = -0.1) -> str:
     return PHASE_CLIENT.replace("@CAP@", f"{cap:.16e}".replace("e", "d"))
 
+OMEGA_CLIENT = r"""
+program omega_client
+ use icepack_intfc, dbl_kind => icepack_dbl_kind
+ use icedrv_InitMod, only: icedrv_initialize
+ use icedrv_domain_size, only: ncat, nilyr
+ use icedrv_arrays_column, only: hin_max
+ use icedrv_state, only: trcr_depend, trcr_base, n_trcr_strata, nt_strata
+ implicit none
+ integer :: mode, j, n, k, ntrcr, nt_sice
+ real(dbl_kind) :: rhoi, lf, min_salin, input_salt, expected, actual
+ real(dbl_kind), parameter :: dt=3600.d0, mass_flux=0.001d0
+ real(dbl_kind) :: aicen(ncat), vicen(ncat), vsnon(ncat), ai(ncat), vi(ncat)
+ real(dbl_kind) :: rsiden(ncat), salinz(nilyr), faero(1), bio(1), ocean(1)
+ real(dbl_kind), allocatable :: tracers(:,:)
+ real(dbl_kind) :: aice, aice0, frain, fpond, fresh, fsalt, fhocn, meltl, frazil, frazil_diag
+ logical :: first_ice(ncat)
+ call icedrv_initialize()
+ call check_warnings()
+ call icepack_query_tracer_sizes(ntrcr_out=ntrcr)
+ call icepack_query_tracer_indices(nt_sice_out=nt_sice)
+ call icepack_query_parameters(rhoi_out=rhoi,Lfresh_out=lf,min_salin_out=min_salin)
+ call check_warnings()
+ if(min_salin<=0.d0 .or. min_salin>=4.d0) error stop 'unexpected test salinity floor'
+ allocate(tracers(ntrcr,ncat))
+ call icepack_init_parameters(ktherm_in=2,cpl_frazil_in='omega-fluxes')
+ call check_warnings()
+ do mode=0,1
+   call icepack_init_parameters(mushy_zero_salinity_in=(mode==1))
+   call check_warnings()
+   do j=1,5
+     if(mode==1 .and. j==5) cycle
+     select case(j)
+     case(1)
+       input_salt=0.d0
+     case(2)
+       input_salt=min_salin/10.d0
+     case(3)
+       input_salt=4.d0
+     case(4)
+       input_salt=min_salin
+     case(5)
+       input_salt=-1.d-12
+     end select
+     call step(input_salt)
+     call check_warnings()
+     expected=input_salt
+     if(mode==0) expected=max(input_salt,min_salin)
+     actual=0.d0
+     do n=1,ncat
+       do k=1,nilyr
+         actual=actual+vicen(n)*rhoi*tracers(nt_sice+k-1,n)/1000.d0/nilyr
+       enddo
+     enddo
+     if(abs(sum(vicen)*rhoi-mass_flux*dt)>1.d-10) error stop 'omega ice mass mismatch'
+     if(abs(actual-mass_flux*dt*expected/1000.d0)>1.d-12) error stop 'omega ice salt mismatch'
+     if(abs(fsalt-0.03d0)>1.d-15 .or. abs(fresh-0.02d0)>1.d-15) error stop 'omega ocean flux changed'
+   enddo
+ enddo
+ call step(0.d0,0.d0)
+ call check_warnings()
+ if(any(vicen/=0.d0) .or. abs(fsalt-0.03d0)>1.d-15 .or. abs(fresh-0.02d0)>1.d-15) &
+      error stop 'zero omega mass flux changed ice or ocean fluxes'
+ print *, 'OMEGA_SALINITY_OK'
+ ! The enabled closure must reject negative salt instead of silently creating it.
+ call step(-1.d-12)
+ call icepack_warnings_flush(6)
+ if(.not.icepack_warnings_aborted()) error stop 'negative omega salinity was accepted'
+ print *, 'OMEGA_NEGATIVE_OK'
+ contains
+ subroutine step(s,mass)
+   real(dbl_kind), intent(in) :: s
+   real(dbl_kind), intent(in), optional :: mass
+   real(dbl_kind) :: incoming_mass
+   incoming_mass=mass_flux
+   if(present(mass)) incoming_mass=mass
+   aicen=0.d0
+   vicen=0.d0
+   vsnon=0.d0
+   ai=0.d0
+   vi=0.d0
+   tracers=0.d0
+   rsiden=0.d0
+   salinz=0.d0
+   faero=0.d0
+   bio=0.d0
+   ocean=0.d0
+   first_ice=.true.
+   aice=0.d0
+   aice0=1.d0
+   frain=0.d0
+   fpond=0.d0
+   fresh=0.02d0
+   fsalt=0.03d0
+   fhocn=0.d0
+   meltl=0.d0
+   frazil=0.d0
+   frazil_diag=0.d0
+   call icepack_step_therm2(dt=dt,hin_max=hin_max,aicen=aicen,vicen=vicen,vsnon=vsnon, &
+        aicen_init=ai,vicen_init=vi,trcrn=tracers,aice0=aice0,aice=aice, &
+        trcr_depend=trcr_depend(1:ntrcr),trcr_base=trcr_base(1:ntrcr,:), &
+        n_trcr_strata=n_trcr_strata(1:ntrcr),nt_strata=nt_strata(1:ntrcr,:), &
+        Tf=0.d0,sss=0.d0,salinz=salinz,rsiden=rsiden,meltl=meltl, &
+        frzmlt=0.d0,frazil=frazil,frain=frain,fpond=fpond,fresh=fresh,fsalt=fsalt, &
+        fhocn=fhocn,faero_ocn=faero,first_ice=first_ice,flux_bio=bio, &
+        ocean_bio=ocean,frazil_diag=frazil_diag,frazilm=incoming_mass, &
+        frazils=incoming_mass*s/1000.d0,frazilh=incoming_mass*lf)
+ end subroutine
+ subroutine check_warnings()
+   call icepack_warnings_flush(6)
+   if(icepack_warnings_aborted()) error stop 'omega test interface failed'
+ end subroutine
+end program
+"""
+
 CONNECTIVITY_CLIENT = r"""
 program connectivity_client
  use icepack_intfc, dbl_kind => icepack_dbl_kind
@@ -611,11 +726,13 @@ BGC_CLIENT = r"""
 program bgc_client
  use icepack_intfc, dbl_kind => icepack_dbl_kind
  use icedrv_InitMod, only: icedrv_initialize
- use icedrv_state, only: trcrn
- use icedrv_domain_size, only: nilyr,ncat
+ use icedrv_domain_size, only: nilyr,ncat,nblyr
  use, intrinsic :: ieee_arithmetic, only: ieee_is_finite
  implicit none
- integer :: nbtrcr,ntrcr,ntrcr_o,max_nbtrcr
+ integer :: nbtrcr,ntrcr,ntrcr_o,max_nbtrcr,mode,mm,j
+ integer, allocatable :: bio_indices(:)
+ character(len=icepack_char_len_long), allocatable :: warnings(:)
+ real(dbl_kind) :: positive_salt(2)
  real(dbl_kind), allocatable :: salt(:,:),bio(:,:),ocean(:)
  call icedrv_initialize()
  call check_warnings()
@@ -623,28 +740,63 @@ program bgc_client
       ntrcr_o_out=ntrcr_o,max_nbtrcr_out=max_nbtrcr)
  call check_warnings()
  if(nbtrcr<=0) error stop 'BGC test requires an active tracer'
- allocate(salt(nilyr,ncat),bio(ntrcr-ntrcr_o,ncat),ocean(max_nbtrcr))
+ allocate(salt(nilyr,ncat),bio(ntrcr-ntrcr_o,ncat),ocean(max_nbtrcr),bio_indices(max_nbtrcr))
+ call icepack_query_tracer_indices(bio_index_out=bio_indices)
+ call check_warnings()
  ocean=1.d0
- salt=0.d0
- bio=0.d0
- call icepack_init_bgc(sicen=salt,trcrn=bio,sss=0.d0,ocean_bio_all=ocean)
- call check_warnings()
- if(any(bio/=0.d0)) error stop 'freshwater BGC initializer produced nonzero tracers'
+ positive_salt=[1.d-12,4.d0]
+ do mode=0,1
+   call icepack_init_parameters(mushy_zero_salinity_in=(mode==1))
+   call check_warnings()
+   salt=0.d0
+   bio=0.d0
+   call icepack_init_bgc(sicen=salt,trcrn=bio,sss=0.d0,ocean_bio_all=ocean)
+   call check_scaling_warning(.false.)
+   call check_warnings()
+   if(any(bio/=0.d0)) error stop 'freshwater BGC initializer produced nonzero tracers'
+   do j=1,size(positive_salt)
+     salt=positive_salt(j)/4.d0
+     bio=0.d0
+     call icepack_init_bgc(sicen=salt,trcrn=bio,sss=positive_salt(j),ocean_bio_all=ocean)
+     call check_scaling_warning(.false.)
+     call check_warnings()
+     if(.not.all(ieee_is_finite(bio))) error stop 'positive-salinity BGC scaling is nonfinite'
+     do mm=1,nbtrcr
+       if(any(abs(bio(bio_indices(mm)-ntrcr_o:bio_indices(mm)-ntrcr_o+nblyr,:)-0.25d0)>1.d-10)) &
+            error stop 'positive-salinity BGC scaling mismatch'
+     enddo
+   enddo
+   salt=1.d0
+   bio=2.d0
+   call icepack_init_bgc(sicen=salt,trcrn=bio,sss=0.d0,ocean_bio_all=ocean)
+   call check_scaling_warning(.true.)
+   call check_warnings()
+   do mm=1,nbtrcr
+     if(any(bio(bio_indices(mm)-ntrcr_o:bio_indices(mm)-ntrcr_o+nblyr+2,:)/=0.d0)) &
+          error stop 'zero-SSS BGC scaling produced nonzero tracers'
+   enddo
+ enddo
  print *, 'BGC_ZERO_OK'
- salt=1.d-12
- bio=0.d0
- call icepack_init_bgc(sicen=salt,trcrn=bio,sss=1.d-12,ocean_bio_all=ocean)
- call check_warnings()
- if(.not.all(ieee_is_finite(bio))) error stop 'tiny-salt BGC scaling is nonfinite'
  print *, 'BGC_TINY_OK'
- ! The invalid state must abort; no subsequent physics call is made.
- salt=1.d0
- bio=0.d0
- call icepack_init_bgc(sicen=salt,trcrn=bio,sss=0.d0,ocean_bio_all=ocean)
+ print *, 'BGC_SALINE_ICE_OK'
+ bio=2.d0
+ call icepack_init_bgc(sicen=salt,trcrn=bio,sss=-1.d-12,ocean_bio_all=ocean)
  call icepack_warnings_flush(6)
- if(.not.icepack_warnings_aborted()) error stop 'BGC zero-denominator guard failed'
- print *, 'BGC_GUARD_OK'
+ if(.not.icepack_warnings_aborted()) error stop 'negative ocean salinity was accepted'
+ if(any(bio/=2.d0)) error stop 'negative ocean salinity changed BGC tracers'
+ print *, 'BGC_NEGATIVE_OK'
  contains
+ subroutine check_scaling_warning(expected)
+   logical, intent(in) :: expected
+   integer :: i,count
+   call icepack_warnings_getall(warnings)
+   count=0
+   do i=1,size(warnings)
+     if(index(warnings(i),'scale_bgc: zero ocean salinity')>0) count=count+1
+   enddo
+   if(expected .and. count/=1) error stop 'missing or repeated zero-SSS BGC warning'
+   if(.not.expected .and. count/=0) error stop 'unexpected zero-SSS BGC warning'
+ end subroutine
  subroutine check_warnings()
    call icepack_warnings_flush(6)
    if(icepack_warnings_aborted()) error stop 'public BGC interface failed'
@@ -998,6 +1150,11 @@ def core_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], list[P
             checks, _ = phase_checks(run)
             metrics += checks
             evidence.append(run)
+        omega = runner.harness("T2-omega", OMEGA_CLIENT)
+        log = (omega / "harness.log").read_text()
+        metrics += [check(marker, float(marker not in log))
+                    for marker in ("OMEGA_SALINITY_OK", "OMEGA_NEGATIVE_OK")]
+        evidence.append(omega)
         regression = []
         for enabled in (False, True):
             settings = {"mushy_zero_salinity": ".false.", "sss_fixed": "34.0", "saltmax": "3.2"}
@@ -1008,7 +1165,8 @@ def core_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], list[P
         metrics.append(check("default-off restart byte differences",
                              float(last_restart(regression[0]).read_bytes() != last_restart(regression[1]).read_bytes())))
         note = ("Eighteen compiled phase states and 53 ocean salinities under 0/-0.1 C caps. "
-                "Cell-specific frazil salinity reductions are checked with the option off and on. "
+                "Cell-specific frazil salinity reductions and omega-fluxes salt handling are checked "
+                "with the option off and on. "
                 "A separate saline default-off restart is compared with the recorded baseline git ref; "
                 "references without a saltmax setting use their native saline initialization.")
     elif key == "T3":
@@ -1150,8 +1308,7 @@ def core_case(runner: Runner, key: str) -> tuple[list[dict[str, object]], list[P
     elif key == "T10-BGC":
         run = runner.harness("T10-BGC-initializer", BGC_CLIENT, bgc=True)
         log = (run / "harness.log").read_text()
-        metrics = [check(marker, float(marker not in log))
-                   for marker in ("BGC_ZERO_OK", "BGC_TINY_OK", "BGC_GUARD_OK")]
+        metrics = [check(marker, float(marker not in log)) for marker in BGC_MARKERS]
         evidence.append(run)
         note = "Active-tracer initializer only; this does not establish subsequent tracer evolution."
     else:
@@ -1722,10 +1879,10 @@ def annual_plot_series(evidence: list[Path]) -> list[tuple[str, list[tuple[float
 def graph_case(output: Path, key: str, evidence: list[Path]) -> str | None:
     if key == "T10-BGC":
         log = (evidence[0] / "harness.log").read_text()
-        markers = ("BGC_ZERO_OK", "BGC_TINY_OK", "BGC_GUARD_OK")
+        markers = BGC_MARKERS
         elements = ['<svg xmlns="http://www.w3.org/2000/svg" width="900" height="300" viewBox="0 0 900 300">',
                     '<rect width="900" height="300" fill="white"/>',
-                    '<text x="30" y="35" font-size="20">BGC initializer and guard evidence</text>']
+                    '<text x="30" y="35" font-size="20">BGC initializer evidence</text>']
         for index, marker in enumerate(markers):
             found = marker in log
             color = "#238b45" if found else "#b2182b"
@@ -1810,7 +1967,7 @@ def validate_results(output: Path) -> dict:
     manifest = json.loads((output / "manifest.json").read_text())
     if manifest.get("schema") == 1:
         raise ValueError("legacy result schema uses old test numbering; use the original runner to validate or report it")
-    if manifest.get("schema") not in (2, 3, RESULT_SCHEMA) or manifest.get("status") != "completed":
+    if manifest.get("schema") not in (2, 3, 4, RESULT_SCHEMA) or manifest.get("status") != "completed":
         raise ValueError("results are incomplete or have an unsupported schema")
     if "results.json" not in manifest["files"]:
         raise ValueError("results.json is not included in the evidence manifest")
@@ -1823,7 +1980,7 @@ def validate_results(output: Path) -> dict:
         raise ValueError("result selection does not match the manifest")
     if selected(",".join(manifest["selection"]), "core") != manifest["selection"]:
         raise ValueError("invalid result selection")
-    counts = {"T1": 1, "T2": 4, "T3": 4, "T4": 2, "T5": 19, "T6": 2, "T7": 1,
+    counts = {"T1": 1, "T2": 5 if manifest["schema"] >= 5 else 4, "T3": 4, "T4": 2, "T5": 19, "T6": 2, "T7": 1,
               "T8": 6, "T9": 1, "T10-brine": 6, "T10-BGC": 1, "T10": 31,
               "T10-cost": 17, "T11": 6, "T12": 11, "T13": 11 if manifest["schema"] >= 3 else 10,
               "T14": 11}
@@ -1862,6 +2019,8 @@ def validate_results(output: Path) -> dict:
                     required += ("summary.csv",)
             elif name.startswith("T2-phase-cap-") or name == "T10-brine-constants":
                 required = ("harness.log", "constants.csv", "phase.csv", "frazil.csv")
+            elif name == "T2-omega":
+                required = ("harness.log", "harness.F90")
             elif name == "T7-connectivity":
                 required = ("harness.log", "connectivity.csv")
             elif name == "T9-observation":
@@ -2208,7 +2367,8 @@ def self_test() -> int:
                 self.assertEqual(graph_case(root, "T10-BGC", [run]), "T10-BGC.svg")
                 graph = (root / "T10-BGC.svg").read_text()
                 self.assertIn("BGC_TINY_OK: marker present", graph)
-                self.assertIn("BGC_GUARD_OK: marker missing", graph)
+                self.assertIn("BGC_SALINE_ICE_OK: marker missing", graph)
+                self.assertIn("BGC_NEGATIVE_OK: marker missing", graph)
 
         def test_annual_plot_uses_season_offsets(self):
             with tempfile.TemporaryDirectory() as folder:

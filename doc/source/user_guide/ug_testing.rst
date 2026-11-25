@@ -637,6 +637,8 @@ The exact detached reference commit and source hashes are recorded.
 References that predate the new namelist controls omit those controls and
 use their native saline initialization. The compiled frazil checks also
 exercise cell-specific salinity reductions with the option off and on.
+T2 also exercises omega-fluxes at zero, sub-floor and normal incoming
+salinity with the option off and on, including the negative-salinity guard.
 
 The tool writes ``TEST_RESULTS.md``, SVG figures, measured-value tables, raw
 CSV diagnostics/restarts, command/build logs, ``results.json`` and
@@ -744,7 +746,8 @@ Scientific coverage and limits
      - Active-brine zero/tiny-salinity flag pairs, seven controlled profiles,
        and public-API replay of integrated freshwater profiles.
    * - T10-BGC
-     - Active-tracer initializer, tiny-positive scaling and zero-denominator guard.
+     - Active-tracer initialization with freshwater and saline ice at zero ocean
+       salinity, tiny-positive scaling, and negative-ocean-salinity rejection.
    * - T10
      - A 365-day flag off/on pair plus eleven paired one-day namelist families.
    * - T10-cost
@@ -863,7 +866,8 @@ profiles and local energy samples.  Files are ``mushy_columns.csv``,
 ``mushy_layers.csv``, ``mushy_snow.csv`` and ``mushy_energy.csv``; headers include
 units. Column records include actual ``sst_C`` and
 ``freezing_temperature_C`` as well as ``sss_ppt``; these are used to verify
-the paired boundary at every sampled timestep.
+the paired boundary at every sampled timestep. ``new_frazil_salinity_ppt``
+uses the native frazil law, not salinity supplied through ``omega-fluxes``.
 The energy interface returns per-category timestep, initial/final/input
 energy, signed residual and absolute residual rate.  No diagnostic I/O is added
 to column physics.  Test clients configure Icepack first, use public interfaces

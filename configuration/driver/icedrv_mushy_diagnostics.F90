@@ -13,7 +13,8 @@
           dpnd_freebd, dpnd_initial, dpnd_dlid, dpnd_melt, dpnd_ridge, congel, meltb
       use icedrv_flux, only: sst, Tf
       use icepack_intfc, only: icepack_query_parameters, icepack_query_tracer_indices, &
-          icepack_query_tracer_flags, icepack_mushy_state, icepack_snow_temperature, &
+          icepack_query_tracer_flags, icepack_mushy_state, icepack_mushy_frazil_state, &
+          icepack_snow_temperature, &
           icepack_warnings_flush, icepack_warnings_aborted
       use icedrv_system, only: icedrv_system_abort
 
@@ -152,22 +153,19 @@
       end subroutine mushy_write_energy
 
       subroutine mushy_end()
-      real (kind=dbl_kind) :: final(5,nx), rhoi, rhofresh, delta, new_salt, &
-          temperature, phi, q, salt, puny
+      real (kind=dbl_kind) :: final(5,nx), rhoi, rhofresh, new_salt, &
+          new_temperature, new_enthalpy, temperature, phi, q, salt, puny
       integer :: i, n, k, nt_qice, nt_sice, nt_qsno, nt_Tsfc, status
       call inventory(final)
-      call icepack_query_parameters(rhoi_out=rhoi,rhofresh_out=rhofresh, &
-          dSin0_frazil_out=delta,puny_out=puny)
+      call icepack_query_parameters(rhoi_out=rhoi,rhofresh_out=rhofresh,puny_out=puny)
       call check_physics()
       call icepack_query_tracer_indices(nt_qice_out=nt_qice,nt_sice_out=nt_sice, &
           nt_qsno_out=nt_qsno,nt_Tsfc_out=nt_Tsfc)
       call check_physics()
       do i=1,nx
-         if (sss(i) > 2.0_dbl_kind*delta) then
-            new_salt = sss(i)-delta
-         else
-            new_salt = sss(i)**2/(4.0_dbl_kind*delta)
-         endif
+         call icepack_mushy_frazil_state(sss=sss(i),zSin=new_salt, &
+              zTin=new_temperature,zqin=new_enthalpy)
+         call check_physics()
          write(column_unit,'(*(g0,:,","))',iostat=status) istep,i,l_mpond_fresh,dt, &
              initial(1,i),final(1,i),initial(2,i),final(2,i),initial(3,i),final(3,i), &
              fresh_ai(i),fsalt_ai(i),fhocn_ai(i),fsnow(i),frain(i),evap(i),raw_pond(i), &

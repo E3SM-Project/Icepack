@@ -28,7 +28,7 @@
       use icepack_parameters, only: rhos, rhoi, Lfresh, ice_ref_salinity
       use icepack_parameters, only: phi_init, dsin0_frazil
       use icepack_parameters, only: rhosi, conserv_check, rhosmin, snwredist
-      use icepack_parameters, only: kitd, ktherm, min_salin
+      use icepack_parameters, only: kitd, ktherm, min_salin, mushy_zero_salinity
       use icepack_parameters, only: z_tracers, hfrazilmin, hi_min
       use icepack_parameters, only: cpl_frazil, update_ocn_f, saltflux_option
       use icepack_parameters, only: icepack_chkoptargflag
@@ -1470,6 +1470,19 @@
             vi0new = frazilm * dt / rhoi
             if (vi0new > puny) then
                Si0new = c1000 * frazils / frazilm
+               if (.not. mushy_zero_salinity) then
+                  if (Si0new < min_salin) then
+                     write(warnstr,*) subname, 'omega-fluxes frazil salinity below min_salin (g/kg): ', &
+                                     Si0new, min_salin
+                     call icepack_warnings_add(warnstr)
+                  endif
+                  Si0new = max(Si0new, min_salin)
+               elseif (Si0new < c0) then
+                  write(warnstr,*) subname, 'omega-fluxes frazil salinity is negative (g/kg): ', Si0new
+                  call icepack_warnings_add(warnstr)
+                  call icepack_warnings_setabort(.true.,__FILE__,__LINE__)
+                  return
+               endif
                qi0new = -frazilh / frazilm * rhoi
             else
                Si0new = sss
