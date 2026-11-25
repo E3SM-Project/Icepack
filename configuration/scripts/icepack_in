@@ -1,4 +1,7 @@
 &setup_nml
+    mushy_diagnostics = .false.
+    mushy_diagfreq  = 1
+    mushy_profilefreq = 1
     days_per_year  = 365
     use_leap_years = .false.
     year_init      = 2015
@@ -46,6 +49,8 @@
 &thermo_nml
     kitd              = 1
     ktherm            = 2
+    mushy_zero_salinity = .false.
+    saltmax           = 3.2
     hi_min            = 0.01
     ksno              = 0.3d0
     conduct           = 'bubbly'
@@ -131,7 +136,9 @@
     ice_ref_salinity = 4.0
     saltflux_option = 'constant'
     oceanmixed_ice  = .true.
+    sst_at_freezing = .false.
     wave_spec_type  = 'none'
+    nfreq          = 25
     wave_height_type= 'none'
     restore_ocn     = .false.
     trestore        = 90

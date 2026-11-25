@@ -1476,6 +1476,8 @@ where
 
 The other root is unphysical.
 
+.. _thermo-mushy-zero-salinity:
+
 Mushy thermodynamics (``ktherm`` = 2)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -1487,6 +1489,18 @@ the brine inclusions is assumed to be much smaller than the size of
 the ice layers, allowing a continuum approximation: a bulk sea-ice
 quantity is taken to be the liquid-fraction-weighted average of that
 quantity in the ice and in the brine.
+
+The ``mushy_zero_salinity`` logical in ``thermo_nml`` is off by default
+and is valid only with ``ktherm`` = 2; the driver rejects this option with
+another thermodynamics model. When enabled, it permits exactly zero bulk
+sea-ice salinity and avoids restoring the legacy positive salinity floor in
+the mushy salinity and brine-grid remapping paths. Positive-salinity states
+retain the existing liquidus closure. The option applies to bulk ice
+salinity, not ocean surface salinity (``SSS``); these are separate
+quantities. The freshwater phase closure and its relation to enthalpy are
+given below. Frazil initialization is also specified below; ocean flux
+and coupler behavior are discussed in :ref:`ocean`. Test coverage is
+described in :ref:`mushy_testing`.
 
 *Enthalpy and mushy physics* 
 
@@ -1516,6 +1530,35 @@ energy required to bring the melt water temperature to :math:`0^{\circ}C`
 (:math:`\rho_i`
 and :math:`\rho_w` in equations :eq:`ice-enthalpy` and
 :eq:`enth-def`, respectively).
+
+For an exactly fresh layer, the liquidus relation cannot determine the
+liquid fraction: the brine salinity is undefined at zero bulk salinity.
+With ``mushy_zero_salinity`` enabled, the enthalpy relation
+:eq:`enth-def` instead selects the phase state. Let
+:math:`q_m=-\rho_i L_\mathrm{fresh}` be the enthalpy of solid fresh ice
+at :math:`0^{\circ}\mathrm{C}`. The temperature :math:`T` and liquid
+volume fraction :math:`\phi` are then
+
+.. math::
+   (T,\phi) =
+   \begin{cases}
+   \left(\dfrac{q-q_m}{\rho_i c_i},\,0\right),
+      & q < q_m,\\[6pt]
+   \left(0,\,1+\dfrac{q}{\rho_i L_\mathrm{fresh}}\right),
+      & q_m \leq q \leq 0,\\[6pt]
+   \left(\dfrac{q}{\rho_w c_w},\,1\right),
+      & q > 0.
+   \end{cases}
+   :label: mushy-zero-salinity-state
+
+Here :math:`q` is volumetric enthalpy, :math:`c_i` is the heat capacity
+of pure ice, and :math:`c_w` is the heat capacity of water. On the
+zero-degree melting plateau, :math:`q=-(1-\phi)\rho_i L_\mathrm{fresh}`;
+temperature alone therefore cannot recover :math:`\phi`. At the lower
+endpoint :math:`q=q_m`, the state is solid, and at :math:`q=0` it is
+fully liquid. The enthalpy-based inversion is used for the zero-salinity
+phase state rather than the temperature-only relation
+:math:`\phi=S/S_{br}`.
 
 The liquid fraction, :math:`\phi`, of sea ice is given by
 
@@ -1577,6 +1620,39 @@ Fitting to the data, :math:`T_0=-7.636^\circ`\ C,
 :math:`a_1=-18.48 \;\mathrm{g} \;\mathrm{kg}^{-1} \;\mathrm{K}^{-1}`,
 :math:`a_2=-10.3085\;\mathrm{g} \;\mathrm{kg}^{-1} \;\mathrm{K}^{-1}`,
 :math:`b_1=0` and :math:`b_2=62.4 \;\mathrm{g}\;\mathrm{kg}^{-1}`.
+
+*Frazil initialization*
+
+For ``ktherm`` = 2, the bulk salinity :math:`S_f` assigned to newly
+formed frazil is computed from ocean surface salinity :math:`SSS` and
+the positive salinity decrement :math:`\Delta S_0`
+(``dSin0_frazil``, default 3 ppt):
+
+.. math::
+   S_f =
+   \begin{cases}
+   SSS-\Delta S_0, & SSS > 2\Delta S_0,\\[3pt]
+   \dfrac{SSS^2}{4\Delta S_0}, & 0 \leq SSS \leq 2\Delta S_0.
+   \end{cases}
+   :label: mushy-frazil-salinity
+
+The initial frazil temperature :math:`T_\mathrm{frazil}` follows the
+mushy liquidus at brine salinity :math:`S_f/\phi_\mathrm{init}`, limited
+above by ``Tliquidus_max``:
+
+.. math::
+   T_\mathrm{frazil} =
+   \min\left(T_\ell\left(\frac{S_f}{\phi_\mathrm{init}}\right),
+             T_{\mathrm{liquidus,max}}\right).
+   :label: mushy-frazil-temperature
+
+When the cap is inactive, the initial frazil liquid fraction is
+:math:`\phi_\mathrm{init}`. If the cap lowers the liquidus temperature,
+enthalpy is recomputed from the capped temperature and :math:`S_f` using
+the mush enthalpy relation :eq:`enth-def`. The cap changes temperature and
+enthalpy, not salinity. Thus exact-zero ``SSS`` gives :math:`S_f=0`,
+although frazil water may still form. This ocean salinity is distinct
+from the bulk-ice option ``mushy_zero_salinity``.
 
 *Two-stage outer iteration* 
 

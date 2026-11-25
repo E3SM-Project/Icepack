@@ -116,3 +116,28 @@ To add a new test (for example newtest), several files may be needed,
 Generating a new test, particularly the **test_newtest.script** usually takes some iteration 
 before it's working properly.
 
+The opt-in ``mushy_layer`` test follows this mechanism: its shell fragment runs
+a canonical native case before invoking the single Python implementation
+``test_mushy_layer.py`` from ``${ICE_SCRIPTS}/tests``.  No Python dependency is
+added to smoke or restart tests.  Ensemble evidence lives in the case directory,
+not the canonical run directory copied/compared by ``baseline.script``.
+The dedicated ``mushy_suite.ts`` adds freshwater smoke/restart configurations
+without changing default suites.  See :ref:`mushy_testing`.
+
+The Python tool can also be run independently from the checkout root. Its
+``self-test`` command checks the analysis helpers without a model build;
+``run`` performs the selected scientific cases and stores evidence in a new
+output directory; ``validate`` checks a completed result directory. For example::
+
+  python3 configuration/scripts/tests/test_mushy_layer.py self-test
+  python3 configuration/scripts/tests/test_mushy_layer.py run \
+    --machine MACHINE --environment ENVIRONMENT --suite core \
+    --output /path/to/new/results
+  python3 configuration/scripts/tests/test_mushy_layer.py validate \
+    --results /path/to/new/results
+
+Use the full user-guide instructions for supported selections, data preparation,
+and result interpretation (:ref:`mushy_testing`). The physical meaning of the
+zero-salinity phase closure and its frazil boundary conditions is given in
+:ref:`thermo-mushy-zero-salinity` and :ref:`ocean`.
+

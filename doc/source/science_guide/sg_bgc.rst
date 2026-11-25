@@ -465,6 +465,13 @@ humic material.
 
 The **icepack\_in** namelist options are described in the :ref:`tabnamelist`.
 
+With ``scale_bgc`` and mushy thermodynamics, initialization scales z-tracers
+by ice salinity divided by ocean surface salinity. At exactly zero ocean
+salinity, initialized z-tracers are set to zero. If the ice is saline,
+Icepack warns that this scaling is undefined. Negative ocean salinity is
+rejected in this initialization path. This applies independently of
+``mushy_zero_salinity`` and does not change ice salinity.
+
 
 Vertically resolved z-tracers are brine volume conserved and thus depend
 on both the ice volume and the brine height fraction tracer

@@ -101,6 +101,7 @@
 
       subroutine step_therm1 (dt)
 
+      use icedrv_mushy_diagnostics, only: mushy_write_energy
       use icedrv_arrays_column, only: ffracn, dhsn
       use icedrv_arrays_column, only: Cdn_ocn, Cdn_ocn_skin, Cdn_ocn_floe
       use icedrv_arrays_column, only: Cdn_ocn_keel, Cdn_atm_ratio
@@ -167,6 +168,8 @@
 
       real (kind=dbl_kind), dimension(nslyr,ncat) :: &
          rsnwn, smicen, smliqn
+
+      real (kind=dbl_kind) :: energy_diagnostics(6,ncat)
 
       real (kind=dbl_kind) :: &
          puny
@@ -380,7 +383,13 @@
             dpnd_expon  = dpnd_expon(i),   dpnd_exponn  = dpnd_exponn(i,:),   &
             dpnd_freebd = dpnd_freebd(i),  dpnd_freebdn = dpnd_freebdn(i,:),  &
             dpnd_initial= dpnd_initial(i), dpnd_initialn= dpnd_initialn(i,:), &
-            dpnd_dlid   = dpnd_dlid(i),    dpnd_dlidn   = dpnd_dlidn(i,:))
+            dpnd_dlid   = dpnd_dlid(i),    dpnd_dlidn   = dpnd_dlidn(i,:), &
+            energy_diagnostics = energy_diagnostics)
+
+        call icepack_warnings_flush(nu_diag)
+        if (icepack_warnings_aborted()) call icedrv_system_abort(string=subname, &
+            file=__FILE__,line=__LINE__)
+        call mushy_write_energy(i,energy_diagnostics)
 
         if (tr_aero) then
           do n = 1, ncat

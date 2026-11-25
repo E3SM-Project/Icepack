@@ -183,6 +183,10 @@ Some of the options are
 
 ``thermo1`` which on turns on the Bitz-Lipscomb thermodynamics model (default is mushy-layer)
 
+The optional exact-zero bulk ice-salinity closure is available only with
+``ktherm=2``. Its phase relation and the opt-in scientific tests are described
+in :ref:`thermo-mushy-zero-salinity` and :ref:`mushy_testing`.
+
 ``bgc*`` which turns of various bgc configurations
 
 and there are others.  To add a new option, just add the appropriate file in **configuration/scripts/options**.  Some of the options settings like ``smoke`` and ``restart`` are specifically geared toward setting up tests.  For more information, see :ref:`dev_options`
